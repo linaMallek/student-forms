@@ -1,0 +1,6 @@
+Pandas
+Streamlit
+pandas
+Pillow
+reportlab
+sqlite3
