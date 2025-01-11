@@ -17,17 +17,6 @@ import io
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
 
-def reset_db():
-    conn = sqlite3.connect('student_registration.db')
-    c = conn.cursor()
-    
-    # Drop existing tables
-    c.execute("DROP TABLE IF EXISTS course_registration")
-    c.execute("DROP TABLE IF EXISTS student_info")
-    c.execute("DROP TABLE IF EXISTS admin")
-    
-    conn.commit()
-    conn.close()
     
     # Reinitialize the database
     init_db()
@@ -1130,11 +1119,6 @@ def main():
         }
         </style>
     """, unsafe_allow_html=True)
-    
-    # Add this at the start of your main() function:
-    if 'db_initialized' not in st.session_state:
-        reset_db()
-        st.session_state.db_initialized = True
     
     # Initialize session state
     if 'admin_logged_in' not in st.session_state:
