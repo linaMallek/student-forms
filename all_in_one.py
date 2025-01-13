@@ -7,9 +7,13 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
+from reportlab.lib.units import inch, cm
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from PIL import Image as PILImage
 import io
+import zipfile
+from pathlib import Path
+import shutil
 
 
 
@@ -17,6 +21,17 @@ import io
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
 
+def reset_db():
+    conn = sqlite3.connect('student_registration.db')
+    c = conn.cursor()
+    
+    # Drop existing tables
+    c.execute("DROP TABLE IF EXISTS course_registration")
+    c.execute("DROP TABLE IF EXISTS student_info")
+    c.execute("DROP TABLE IF EXISTS admin")
+    
+    conn.commit()
+    conn.close()
     
     # Reinitialize the database
     init_db()
@@ -64,6 +79,7 @@ def init_db():
             postal_address TEXT,
             email TEXT,
             telephone TEXT,
+            ghana_card_id TEXT,
             nationality TEXT,
             marital_status TEXT,
             gender TEXT,
@@ -84,6 +100,7 @@ def init_db():
             passport_photo_path TEXT,
             transcript_path TEXT,
             certificate_path TEXT,
+            receipt_path TEXT,
             approval_status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
@@ -207,33 +224,75 @@ def get_program_courses(program):
     }
     return courses.get(program, {})
 
+
+
 def generate_student_info_pdf(data):
     filename = f"student_info_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=72)
+    doc = SimpleDocTemplate(
+        filename,
+        pagesize=A4,
+        rightMargin=1.5*cm,
+        leftMargin=1.5*cm,
+        topMargin=1.5*cm,
+        bottomMargin=1.5*cm
+    )
     
+    # Styles
     styles = getSampleStyleSheet()
-    elements = []
-    
-    # Header
-    header_style = ParagraphStyle(
-        'CustomHeader',
+    styles.add(ParagraphStyle(
+        name='CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        alignment=1,
-        spaceAfter=30
-    )
-    elements.append(Paragraph("STUDENT INFORMATION FORM", header_style))
+        alignment=TA_CENTER,
+        spaceAfter=30,
+        textColor=colors.HexColor('#003366')
+    ))
+    
+    styles.add(ParagraphStyle(
+        name='SectionHeader',
+        parent=styles['Heading2'],
+        fontSize=12,
+        textColor=colors.HexColor('#003366'),
+        spaceBefore=15,
+        spaceAfter=10
+    ))
+    
+    elements = []
+    
+    # Header with Logo
+    header_data = [
+        [Image('upsa_logo.jpg', width=1.2*inch, height=1.2*inch),
+         Paragraph("UNIVERSITY OF PROFESSIONAL STUDIES, ACCRA", styles['CustomTitle']),
+         Image('upsa_logo.jpg', width=1.2*inch, height=1.2*inch)]
+    ]
+    header_table = Table(header_data, colWidths=[2*inch, 4*inch, 2*inch])
+    header_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 20))
+    
+    # Document Title
+    elements.append(Paragraph("PROFESSIONAL STUDENT'S INFORMATION DOCUMENT", styles['CustomTitle']))
+    elements.append(Spacer(1, 20))
     
     # Add passport photo if available
     if data['passport_photo_path']:
         try:
-            img = Image(data['passport_photo_path'], width=2*inch, height=2*inch)
-            elements.append(img)
+            photo_data = [[Image(data['passport_photo_path'], width=1.5*inch, height=1.5*inch)]]
+            photo_table = Table(photo_data, colWidths=[1.5*inch])
+            photo_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('BOX', (0, 0), (-1, -1), 1, colors.black),
+            ]))
+            elements.append(photo_table)
+            elements.append(Spacer(1, 20))
         except:
             pass
-    
-    # Personal Information
-    elements.append(Paragraph("Personal Information", styles['Heading2']))
+
+    # Personal Information Section
+    elements.append(Paragraph("Personal Information", styles['SectionHeader']))
     personal_info = [
         ["Student ID:", data['student_id']],
         ["Surname:", data['surname']],
@@ -248,35 +307,42 @@ def generate_student_info_pdf(data):
         ["Denomination:", data['denomination']]
     ]
     
-    t = Table(personal_info, colWidths=[2*inch, 4*inch])
+    t = Table(personal_info, colWidths=[2.5*inch, 4*inch])
     t.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#003366')),
         ('PADDING', (0, 0), (-1, -1), 6),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
     ]))
     elements.append(t)
     elements.append(Spacer(1, 20))
     
-    # Contact Information
-    elements.append(Paragraph("Contact Information", styles['Heading2']))
+    # Contact Information Section
+    elements.append(Paragraph("Contact Information", styles['SectionHeader']))
     contact_info = [
         ["Residential Address:", data['residential_address']],
         ["Postal Address:", data['postal_address']],
         ["Email:", data['email']],
-        ["Telephone:", data['telephone']]
+        ["Telephone:", data['telephone']],
+        ["Ghana Card No:", data['ghana_card_id']]
     ]
     
-    t = Table(contact_info, colWidths=[2*inch, 4*inch])
+    t = Table(contact_info, colWidths=[2.5*inch, 4*inch])
     t.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#003366')),
         ('PADDING', (0, 0), (-1, -1), 6),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
     ]))
     elements.append(t)
     elements.append(Spacer(1, 20))
     
-    # Guardian Information
-    elements.append(Paragraph("Guardian Information", styles['Heading2']))
+    # Guardian Information Section
+    elements.append(Paragraph("Guardian Information", styles['SectionHeader']))
     guardian_info = [
         ["Name:", data['guardian_name']],
         ["Relationship:", data['guardian_relationship']],
@@ -285,56 +351,88 @@ def generate_student_info_pdf(data):
         ["Telephone:", data['guardian_telephone']]
     ]
     
-    t = Table(guardian_info, colWidths=[2*inch, 4*inch])
+    t = Table(guardian_info, colWidths=[2.5*inch, 4*inch])
     t.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#003366')),
         ('PADDING', (0, 0), (-1, -1), 6),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
     ]))
     elements.append(t)
     elements.append(Spacer(1, 20))
     
-    # Educational Background
-    elements.append(Paragraph("Educational Background", styles['Heading2']))
-    education_info = [
-        ["Previous School:", data['previous_school']],
-        ["Qualification Type:", data['qualification_type']],
-        ["Completion Year:", data['completion_year']],
-        ["Aggregate Score:", data['aggregate_score']]
-    ]
-    
-    t = Table(education_info, colWidths=[2*inch, 4*inch])
-    t.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
-        ('PADDING', (0, 0), (-1, -1), 6),
-    ]))
-    elements.append(t)
-    
-    doc.build(elements)
-    return filename
+    # Footer
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.grey,
+        alignment=TA_CENTER
+    )
+    elements.append(Paragraph(
+        f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | UPSA Student Information System",
+        footer_style
+    ))
     
     doc.build(elements)
     return filename
 
 def generate_course_registration_pdf(data):
     filename = f"course_registration_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    doc = SimpleDocTemplate(filename, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=72)
+    doc = SimpleDocTemplate(
+        filename,
+        pagesize=A4,
+        rightMargin=1.5*cm,
+        leftMargin=1.5*cm,
+        topMargin=1.5*cm,
+        bottomMargin=1.5*cm
+    )
     
+    # Styles
     styles = getSampleStyleSheet()
-    elements = []
-    
-    # Header
-    header_style = ParagraphStyle(
-        'CustomHeader',
+    styles.add(ParagraphStyle(
+        name='CustomTitle',
         parent=styles['Heading1'],
         fontSize=16,
-        alignment=1,
-        spaceAfter=30
-    )
-    elements.append(Paragraph("COURSE REGISTRATION FORM (A7)", header_style))
+        alignment=TA_CENTER,
+        spaceAfter=30,
+        textColor=colors.HexColor('#003366')
+    ))
     
-    # Registration Details
+    styles.add(ParagraphStyle(
+        name='SectionHeader',
+        parent=styles['Heading2'],
+        fontSize=12,
+        textColor=colors.HexColor('#003366'),
+        spaceBefore=15,
+        spaceAfter=10
+    ))
+    
+    elements = []
+    
+    # Header with Logo
+    header_data = [
+        [Image('upsa_logo.jpg', width=1.2*inch, height=1.2*inch),
+         Paragraph("UNIVERSITY OF PROFESSIONAL STUDIES, ACCRA", styles['CustomTitle']),
+         Image('upsa_logo.jpg', width=1.2*inch, height=1.2*inch)]
+    ]
+    header_table = Table(header_data, colWidths=[2*inch, 4*inch, 2*inch])
+    header_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    elements.append(header_table)
+    elements.append(Spacer(1, 20))
+    
+    # Document Title
+    elements.append(Paragraph("PROFESSIONAL STUDENT'S COURSE REGISTRATION DOCUMENT", styles['CustomTitle']))
+    elements.append(Paragraph("(FORM A7)", styles['CustomTitle']))
+    elements.append(Spacer(1, 20))
+    
+    # Registration Details Section
+    elements.append(Paragraph("Registration Details", styles['SectionHeader']))
     reg_info = [
         ["Student ID:", data['student_id']],
         ["Index Number:", data['index_number']],
@@ -346,30 +444,83 @@ def generate_course_registration_pdf(data):
         ["Semester:", data['semester']]
     ]
     
-    t = Table(reg_info, colWidths=[2*inch, 4*inch])
+    t = Table(reg_info, colWidths=[2.5*inch, 4*inch])
     t.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('BACKGROUND', (0, 0), (0, -1), colors.lightgrey),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#003366')),
         ('PADDING', (0, 0), (-1, -1), 6),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
     ]))
     elements.append(t)
     elements.append(Spacer(1, 20))
     
-    # Courses
-    elements.append(Paragraph("Selected Courses", styles['Heading2']))
+    # Selected Courses Section
+    elements.append(Paragraph("Selected Courses", styles['SectionHeader']))
     courses_list = data['courses'].split('\n')
     courses_data = [["Course Code", "Course Title", "Credit Hours"]]
     for course in courses_list:
         if '|' in course:
             courses_data.append(course.split('|'))
     
-    t = Table(courses_data, colWidths=[2*inch, 3*inch, 1*inch])
+    t = Table(courses_data, colWidths=[2*inch, 3.5*inch, 1*inch])
     t.setStyle(TableStyle([
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('BACKGROUND', (0, 0), (0, 0), colors.lightgrey),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('BACKGROUND', (0, 0), (0, 0), colors.HexColor('#003366')),
+        ('TEXTCOLOR', (0, 0), (0, 0), colors.white),
         ('PADDING', (0, 0), (-1, -1), 6),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('ALIGN', (-1, 0), (-1, -1), 'CENTER'),  # Center credit hours
     ]))
     elements.append(t)
+    
+    # Total Credits
+    total_credits_style = ParagraphStyle(
+        'TotalCredits',
+        parent=styles['Normal'],
+        fontSize=10,
+        textColor=colors.HexColor('#003366'),
+        alignment=TA_LEFT,
+        spaceBefore=10
+    )
+    elements.append(Paragraph(
+        f"<b>Total Credit Hours:</b> {data['total_credits']}",
+        total_credits_style
+    ))
+    elements.append(Spacer(1, 30))
+    
+    # Signature Section
+    signature_data = [
+        ["_______________________", "_______________________", "_______________________"],
+        ["Student's Signature", "Academic Advisor", "Head of Department"],
+        ["Date: ________________", "Date: ________________", "Date: ________________"]
+    ]
+    
+    sig_table = Table(signature_data, colWidths=[2.5*inch, 2.5*inch, 2.5*inch])
+    sig_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+        ('TEXTCOLOR', (0, 1), (-1, 1), colors.HexColor('#003366')),
+        ('FONTSIZE', (0, 1), (-1, 1), 8),
+        ('TOPPADDING', (0, 2), (-1, 2), 20),
+    ]))
+    elements.append(sig_table)
+    
+    # Footer
+    footer_style = ParagraphStyle(
+        'Footer',
+        parent=styles['Normal'],
+        fontSize=8,
+        textColor=colors.grey,
+        alignment=TA_CENTER
+    )
+    elements.append(Spacer(1, 30))
+    elements.append(Paragraph(
+        f"Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | UPSA Course Registration System",
+        footer_style
+    ))
     
     doc.build(elements)
     return filename
@@ -398,6 +549,7 @@ def review_student_info(form_data, uploaded_files):
         st.write(f"Postal Address: {form_data['postal_address']}")
         st.write(f"Email: {form_data['email']}")
         st.write(f"Telephone: {form_data['telephone']}")
+        st.write(f"Ghana Card No: {form_data['ghana_card_id']}")
         
     st.write("**Guardian Information**")
     st.write(f"Name: {form_data['guardian_name']}")
@@ -418,6 +570,104 @@ def review_student_info(form_data, uploaded_files):
             st.write(f"✅ {doc_name} uploaded")
         else:
             st.write(f"❌ {doc_name} not uploaded")
+            
+def view_student_info():
+    st.subheader("View Student Information")
+    
+    # Program selection
+    program = st.selectbox(
+        "Select Program",
+        ["CIMG", "CIM-UK", "ICAG", "ACCA"]
+    )
+    
+    conn = sqlite3.connect('student_registration.db')
+    
+    # Get students for selected program
+    students = pd.read_sql_query(
+        f"SELECT * FROM student_info WHERE program='{program}'",
+        conn
+    )
+    
+    if not students.empty:
+        # Create two columns layout
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            st.subheader("Students")
+            # Create clickable names list
+            selected_student = None
+            for _, student in students.iterrows():
+                if st.button(
+                    f"{student['surname']}, {student['other_names']}", 
+                    key=f"btn_{student['student_id']}"
+                ):
+                    selected_student = student
+        
+        with col2:
+            if selected_student is not None:
+                st.subheader("Student Profile")
+                
+                tab1, tab2, tab3 = st.tabs([
+                    "Personal Info", 
+                    "Contact & Guardian", 
+                    "Education & Documents"
+                ])
+                
+                with tab1:
+                    st.write("**Personal Information**")
+                    st.write(f"Student ID: {selected_student['student_id']}")
+                    st.write(f"Name: {selected_student['surname']} {selected_student['other_names']}")
+                    st.write(f"Date of Birth: {selected_student['date_of_birth']}")
+                    st.write(f"Place of Birth: {selected_student['place_of_birth']}")
+                    st.write(f"Home Town: {selected_student['home_town']}")
+                    st.write(f"Nationality: {selected_student['nationality']}")
+                    st.write(f"Gender: {selected_student['gender']}")
+                    st.write(f"Marital Status: {selected_student['marital_status']}")
+                    st.write(f"Religion: {selected_student['religion']}")
+                    st.write(f"Denomination: {selected_student['denomination']}")
+                
+                with tab2:
+                    st.write("**Contact Information**")
+                    st.write(f"Residential Address: {selected_student['residential_address']}")
+                    st.write(f"Postal Address: {selected_student['postal_address']}")
+                    st.write(f"Email: {selected_student['email']}")
+                    st.write(f"Telephone: {selected_student['telephone']}")
+                    st.write(f"Ghana Card No: {selected_student['ghana_card_id']}")
+                    
+                    st.write("**Guardian Information**")
+                    st.write(f"Name: {selected_student['guardian_name']}")
+                    st.write(f"Relationship: {selected_student['guardian_relationship']}")
+                    st.write(f"Occupation: {selected_student['guardian_occupation']}")
+                    st.write(f"Address: {selected_student['guardian_address']}")
+                    st.write(f"Telephone: {selected_student['guardian_telephone']}")
+                
+                with tab3:
+                    st.write("**Educational Background**")
+                    st.write(f"Previous School: {selected_student['previous_school']}")
+                    st.write(f"Qualification: {selected_student['qualification_type']}")
+                    st.write(f"Completion Year: {selected_student['completion_year']}")
+                    st.write(f"Aggregate Score: {selected_student['aggregate_score']}")
+                    
+                    st.write("**Documents**")
+                    docs = ["Ghana Card", "Passport Photo", "Transcript", "Certificate"]
+                    for doc in docs:
+                        doc_status = "✅" if selected_student.get(f"{doc.lower()}_uploaded") else "❌"
+                        st.write(f"{doc_status} {doc}")
+                
+                # Add PDF generation button
+                if st.button("Generate PDF Report", key=f"pdf_{selected_student['student_id']}"):
+                    pdf_file = generate_student_info_pdf(selected_student)
+                    with open(pdf_file, "rb") as file:
+                        st.download_button(
+                            label="Download Student Info",
+                            data=file,
+                            file_name=pdf_file,
+                            mime="application/pdf"
+                        )
+    else:
+        st.info(f"No students found for {program}")
+    
+    conn.close()
             
 def review_student_info(form_data, uploaded_files):
     st.subheader("Review Student Information")
@@ -443,6 +693,7 @@ def review_student_info(form_data, uploaded_files):
         st.write(f"Postal Address: {form_data['postal_address']}")
         st.write(f"Email: {form_data['email']}")
         st.write(f"Telephone: {form_data['telephone']}")
+        st.write(f"Ghana Card No: {form_data['ghana_card_id']}")
         
     st.write("**Guardian Information**")
     st.write(f"Name: {form_data['guardian_name']}")
@@ -460,9 +711,53 @@ def review_student_info(form_data, uploaded_files):
     st.write("**Uploaded Documents**")
     for doc_name, file in uploaded_files.items():
         if file:
-            st.write(f"✅ {doc_name} uploaded")
+            if doc_name == 'Receipt':
+                st.write(f"✅ {doc_name} uploaded - {file.name}")
+                # Display receipt preview if it's an image
+                if file.type.startswith('image/'):
+                    st.image(file, caption="Payment Receipt", width=300)
+            else:
+                st.write(f"✅ {doc_name} uploaded")
         else:
             st.write(f"❌ {doc_name} not uploaded")
+            
+def review_course_registration(form_data):
+    st.subheader("Review Course Registration")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.write("**Student Information**")
+        st.write(f"Student ID: {form_data['student_id']}")
+        st.write(f"Index Number: {form_data['index_number']}")
+        st.write(f"Programme: {form_data['programme']}")
+        st.write(f"Level: {form_data['level']}")
+        st.write(f"Specialization: {form_data['specialization']}")
+        
+    with col2:
+        st.write("**Registration Details**")
+        st.write(f"Session: {form_data['session']}")
+        st.write(f"Academic Year: {form_data['academic_year']}")
+        st.write(f"Semester: {form_data['semester']}")
+    
+    st.write("**Selected Courses**")
+    if form_data['courses']:
+        courses_list = form_data['courses'].split('\n')
+        
+        # Create a table for better presentation
+        table_data = []
+        for course in courses_list:
+            if '|' in course:
+                code, title, credits = course.split('|')
+                table_data.append([code, title, f"{credits} credits"])
+        
+        if table_data:
+            df = pd.DataFrame(table_data, columns=['Course Code', 'Course Title', 'Credit Hours'])
+            st.table(df)
+            
+            st.write(f"**Total Credit Hours:** {form_data['total_credits']}")
+    else:
+        st.warning("No courses selected")
   
 def student_info_form():
     st.header("📝 Student Information Form")
@@ -503,6 +798,7 @@ def student_info_form():
         
     with col4:
         form_data['telephone'] = st.text_input("Telephone Number")
+        form_data['ghana_card_id'] = st.text_input("Ghana Card ID Number")
 
     st.subheader("Guardian Information")
     col5, col6 = st.columns(2)
@@ -534,22 +830,33 @@ def student_info_form():
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
         ghana_card = st.file_uploader("Upload Ghana Card", type=['pdf', 'jpg', 'png'])
         passport_photo = st.file_uploader("Upload Passport Photo", type=['jpg', 'png'])
+        transcript = st.file_uploader("Upload Transcript", type=['pdf'])
         st.markdown('</div>', unsafe_allow_html=True)
     
     with col10:
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
-        transcript = st.file_uploader("Upload Transcript", type=['pdf'])
         certificate = st.file_uploader("Upload Certificate", type=['pdf'])
+        receipt = st.file_uploader("Upload Payment Receipt", type=['pdf', 'jpg', 'png'])
         st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Add receipt amount verification
+        receipt_amount = st.number_input("Receipt Amount (GHS)", min_value=0.0, format="%.2f")
+        if receipt_amount < 100.0:  # Example minimum amount
+            st.warning("Receipt amount seems low. Please verify the payment amount.")
 
     uploaded_files = {
         'Ghana Card': ghana_card,
         'Passport Photo': passport_photo,
         'Transcript': transcript,
-        'Certificate': certificate
+        'Certificate': certificate,
+        'Receipt': receipt
     }
 
     if st.button("Review Information"):
+        if not receipt:
+            st.error("Payment receipt is required to proceed.")
+            return
+            
         st.session_state.review_mode = True
         st.session_state.form_data = form_data
         st.session_state.uploaded_files = uploaded_files
@@ -570,6 +877,7 @@ def student_info_form():
                 passport_photo_path = save_uploaded_file(passport_photo, "uploads")
                 transcript_path = save_uploaded_file(transcript, "uploads")
                 certificate_path = save_uploaded_file(certificate, "uploads")
+                receipt_path = save_uploaded_file(receipt, "uploads")
                 
                 conn = sqlite3.connect('student_registration.db')
                 c = conn.cursor()
@@ -577,11 +885,11 @@ def student_info_form():
                 try:
                     c.execute('''
                         INSERT INTO student_info VALUES 
-                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (form_data['student_id'], form_data['surname'], form_data['other_names'],
                           form_data['date_of_birth'], form_data['place_of_birth'], form_data['home_town'],
                           form_data['residential_address'], form_data['postal_address'], form_data['email'],
-                          form_data['telephone'], form_data['nationality'], form_data['marital_status'],
+                          form_data['telephone'], form_data['ghana_card_id'], form_data['nationality'], form_data['marital_status'],
                           form_data['gender'], form_data['religion'], form_data['denomination'],
                           form_data['disability_status'], form_data['disability_description'],
                           form_data['guardian_name'], form_data['guardian_relationship'],
@@ -589,11 +897,13 @@ def student_info_form():
                           form_data['guardian_telephone'], form_data['previous_school'],
                           form_data['qualification_type'], form_data['completion_year'],
                           form_data['aggregate_score'], ghana_card_path, passport_photo_path,
-                          transcript_path, certificate_path, 'pending'))
+                          transcript_path, certificate_path, receipt_path, 'pending', 
+                          datetime.now()))
                     conn.commit()
                     st.success("Information submitted successfully! Pending admin approval.")
+                        
                     st.session_state.review_mode = False
-                except sqlite3.IntegrityError:
+                except sqlite3.IntegrityError as e:
                     st.error("Student ID already exists!")
                 finally:
                     conn.close()
@@ -712,20 +1022,61 @@ def admin_dashboard():
     
     menu = st.sidebar.selectbox(
         "Menu",
-        ["Pending Approvals", "Student Records", "Course Registrations", 
-         "Generate Reports", "Download Forms"]
+        ["Student Records", "Course Registrations", "Database Management", 
+         "Pending Approvals", "Generate Reports"]
     )
     
-    if menu == "Pending Approvals":
-        show_pending_approvals()
-    elif menu == "Student Records":
+    if menu == "Student Records":
         manage_student_records()
     elif menu == "Course Registrations":
         manage_course_registrations()
-    elif menu == "Generate Reports":
-        generate_reports()
+    elif menu == "Database Management":
+        manage_database()
+    elif menu == "Pending Approvals":
+        show_pending_approvals()
     else:
-        download_forms()
+        generate_reports()
+
+def manage_database():
+    st.subheader("Database Management")
+    
+    # Export complete database
+    st.write("### Export Complete Database")
+    if st.button("Download Complete Database"):
+        try:
+            # Create a ZIP file containing all database tables
+            zip_filename = f"complete_database_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+            
+            conn = sqlite3.connect('student_registration.db')
+            
+            # Get all tables
+            tables = {
+                "student_info": pd.read_sql_query("SELECT * FROM student_info", conn),
+                "course_registration": pd.read_sql_query("SELECT * FROM course_registration", conn),
+            }
+            
+            # Create ZIP file
+            with zipfile.ZipFile(zip_filename, 'w') as zipf:
+                for table_name, df in tables.items():
+                    csv_filename = f"{table_name}.csv"
+                    df.to_csv(csv_filename, index=False)
+                    zipf.write(csv_filename)
+                    os.remove(csv_filename)  # Clean up CSV file
+            
+            # Provide download button for ZIP file
+            with open(zip_filename, "rb") as f:
+                st.download_button(
+                    label="Download Database ZIP",
+                    data=f,
+                    file_name=zip_filename,
+                    mime="application/zip"
+                )
+            
+            os.remove(zip_filename)  # Clean up ZIP file
+            conn.close()
+            
+        except Exception as e:
+            st.error(f"Error exporting database: {str(e)}")
 
 def show_pending_approvals():
     st.subheader("Pending Approvals")
@@ -800,55 +1151,141 @@ def show_pending_approvals():
 def manage_student_records():
     st.subheader("Student Records Management")
     
-    # Search functionality
-    search_col1, search_col2 = st.columns([3,1])
-    with search_col1:
-        search_term = st.text_input("Search by Student ID, Name or Email")
-    with search_col2:
-        search_status = st.selectbox("Filter by Status", 
-            ["All", "Pending", "Approved", "Rejected"])
+    # Sorting and filtering options
+    col1, col2, col3 = st.columns([2,2,1])
     
+    with col1:
+        sort_by = st.selectbox(
+            "Sort by",
+            ["Student ID", "Surname", "Date Added", "Programme"]
+        )
+    
+    with col2:
+        sort_order = st.selectbox(
+            "Order",
+            ["Ascending", "Descending"]
+        )
+    
+    with col3:
+        status_filter = st.selectbox(
+            "Status",
+            ["All", "Pending", "Approved", "Rejected"]
+        )
+    
+    # Construct query
     conn = sqlite3.connect('student_registration.db')
-    query = "SELECT * FROM student_info WHERE 1=1"
     
-    if search_term:
-        query += f''' AND (student_id LIKE '%{search_term}%' 
-                    OR surname LIKE '%{search_term}%' 
-                    OR other_names LIKE '%{search_term}%'
-                    OR email LIKE '%{search_term}%')'''
+    sort_field = {
+        "Student ID": "student_id",
+        "Surname": "surname",
+        "Date Added": "created_at",
+        "Programme": "programme"
+    }[sort_by]
     
-    if search_status != "All":
-        query += f" AND approval_status='{search_status.lower()}'"
+    order = "ASC" if sort_order == "Ascending" else "DESC"
+    
+    query = f"""
+        SELECT * FROM student_info 
+        WHERE 1=1 
+        {f"AND approval_status = '{status_filter.lower()}'" if status_filter != 'All' else ''}
+        ORDER BY {sort_field} {order}
+    """
     
     df = pd.read_sql_query(query, conn)
     
     if not df.empty:
-        for _, student in df.iterrows():
-            with st.expander(f"{student['surname']} {student['other_names']} ({student['student_id']})"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**Personal Information**")
-                    st.write(f"Student ID: {student['student_id']}")
-                    st.write(f"Name: {student['surname']} {student['other_names']}")
-                    st.write(f"Date of Birth: {student['date_of_birth']}")
-                    st.write(f"Gender: {student['gender']}")
+        # Display students in a scrollable container
+        st.write("### Student List")
+        student_container = st.container()
+        
+        with student_container:
+            for _, student in df.iterrows():
+                with st.expander(f"{student['surname']}, {student['other_names']} ({student['student_id']})"):
+                    tab1, tab2, tab3 = st.tabs(["Details", "Edit Information", "Documents"])
                     
-                with col2:
-                    st.write("**Contact Information**")
-                    st.write(f"Email: {student['email']}")
-                    st.write(f"Phone: {student['telephone']}")
-                    st.write(f"Address: {student['residential_address']}")
-                
-                # Generate PDF button
-                if st.button("Generate PDF", key=f"pdf_{student['student_id']}"):
-                    pdf_file = generate_student_info_pdf(student)
-                    with open(pdf_file, "rb") as file:
-                        st.download_button(
-                            label="Download Student Info",
-                            data=file,
-                            file_name=pdf_file,
-                            mime="application/pdf"
-                        )
+                    with tab1:
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.write("**Personal Information**")
+                            st.write(f"Student ID: {student['student_id']}")
+                            st.write(f"Name: {student['surname']} {student['other_names']}")
+                            st.write(f"Date of Birth: {student['date_of_birth']}")
+                            st.write(f"Gender: {student['gender']}")
+                            
+                        with col2:
+                            st.write("**Contact Information**")
+                            st.write(f"Email: {student['email']}")
+                            st.write(f"Phone: {student['telephone']}")
+                            st.write(f"Ghana Card: {student['ghana_card_id']}")
+                            st.write(f"Address: {student['residential_address']}")
+                    
+                    with tab2:
+                        # Edit form
+                        edited_data = {}
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            edited_data['surname'] = st.text_input("Surname", student['surname'], key=f"surname_{student['student_id']}")
+                            edited_data['other_names'] = st.text_input("Other Names", student['other_names'], key=f"other_names_{student['student_id']}")
+                            edited_data['email'] = st.text_input("Email", student['email'], key=f"email_{student['student_id']}")
+                            edited_data['telephone'] = st.text_input("Telephone", student['telephone'], key=f"tel_{student['student_id']}")
+                            edited_data['ghana_card_id'] = st.text_input("Ghana Card", student['ghana_card_id'], key=f"ghana{student['ghana_card_id']}")
+                        
+                        with col2:
+                            edited_data['residential_address'] = st.text_area("Residential Address", student['residential_address'], key=f"address_{student['student_id']}")
+                            edited_data['approval_status'] = st.selectbox(
+                                "Status",
+                                ["pending", "approved", "rejected"],
+                                index=["pending", "approved", "rejected"].index(student['approval_status']),
+                                key=f"status_{student['student_id']}"
+                            )
+                        
+                        if st.button("Save Changes", key=f"save_{student['student_id']}"):
+                            try:
+                                c = conn.cursor()
+                                update_query = """
+                                    UPDATE student_info 
+                                    SET surname=?, other_names=?, email=?, telephone=?, ghana_card_id=?,
+                                        residential_address=?, approval_status=?
+                                    WHERE student_id=?
+                                """
+                                c.execute(update_query, (
+                                    edited_data['surname'],
+                                    edited_data['other_names'],
+                                    edited_data['email'],
+                                    edited_data['telephone'],
+                                    edited_data['ghana_card_id'],
+                                    edited_data['residential_address'],
+                                    edited_data['approval_status'],
+                                    student['student_id']
+                                ))
+                                conn.commit()
+                                st.success("Changes saved successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error saving changes: {str(e)}")
+                    
+                    with tab3:
+                        st.write("**Uploaded Documents**")
+                        if student['ghana_card_path']:
+                            st.write("✅ Ghana Card")
+                        if student['passport_photo_path']:
+                            st.write("✅ Passport Photo")
+                        if student['transcript_path']:
+                            st.write("✅ Transcript")
+                        if student['certificate_path']:
+                            st.write("✅ Certificate")
+                        
+                        # Generate PDF button
+                        if st.button("Generate PDF", key=f"pdf_{student['student_id']}"):
+                            pdf_file = generate_student_info_pdf(student)
+                            with open(pdf_file, "rb") as file:
+                                st.download_button(
+                                    label="Download Student Info",
+                                    data=file,
+                                    file_name=pdf_file,
+                                    mime="application/pdf"
+                                )
     else:
         st.info("No records found")
     
@@ -857,49 +1294,133 @@ def manage_student_records():
 def manage_course_registrations():
     st.subheader("Course Registration Management")
     
-    search_col1, search_col2 = st.columns([3,1])
-    with search_col1:
-        search_term = st.text_input("Search by Student ID or Programme")
-    with search_col2:
-        search_status = st.selectbox("Filter by Status", 
-            ["All", "Pending", "Approved", "Rejected"])
+    # Sorting and filtering options
+    col1, col2, col3 = st.columns([2,2,1])
     
+    with col1:
+        sort_by = st.selectbox(
+            "Sort by",
+            ["Registration ID", "Student ID", "Programme", "Date Registered"]
+        )
+    
+    with col2:
+        sort_order = st.selectbox(
+            "Order",
+            ["Ascending", "Descending"],
+            key="reg_order"
+        )
+    
+    with col3:
+        status_filter = st.selectbox(
+            "Status",
+            ["All", "Pending", "Approved", "Rejected"],
+            key="reg_status"
+        )
+    
+    # Construct query
     conn = sqlite3.connect('student_registration.db')
-    query = """
+    
+    sort_field = {
+        "Registration ID": "cr.registration_id",
+        "Student ID": "cr.student_id",
+        "Programme": "cr.programme",
+        "Date Registered": "cr.date_registered"
+    }[sort_by]
+    
+    order = "ASC" if sort_order == "Ascending" else "DESC"
+    
+    query = f"""
         SELECT cr.*, si.surname, si.other_names 
         FROM course_registration cr 
         LEFT JOIN student_info si ON cr.student_id = si.student_id 
-        WHERE 1=1
+        WHERE 1=1 
+        {f"AND cr.approval_status = '{status_filter.lower()}'" if status_filter != 'All' else ''}
+        ORDER BY {sort_field} {order}
     """
-    
-    if search_term:
-        query += f''' AND (cr.student_id LIKE '%{search_term}%' 
-                    OR cr.programme LIKE '%{search_term}%')'''
-    
-    if search_status != "All":
-        query += f" AND cr.approval_status='{search_status.lower()}'"
     
     df = pd.read_sql_query(query, conn)
     
     if not df.empty:
         for _, registration in df.iterrows():
             with st.expander(f"Registration ID: {registration['registration_id']} - {registration['surname']} {registration['other_names']}"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**Registration Details**")
-                    st.write(f"Student ID: {registration['student_id']}")
-                    st.write(f"Programme: {registration['programme']}")
-                    st.write(f"Level: {registration['level']}")
-                    st.write(f"Session: {registration['session']}")
+                tab1, tab2 = st.tabs(["Details", "Edit Registration"])
                 
-                with col2:
-                    st.write("**Academic Information**")
-                    st.write(f"Academic Year: {registration['academic_year']}")
-                    st.write(f"Semester: {registration['semester']}")
-                    st.write(f"Total Credits: {registration['total_credits']}")
+                with tab1:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write("**Registration Details**")
+                        st.write(f"Student ID: {registration['student_id']}")
+                        st.write(f"Programme: {registration['programme']}")
+                        st.write(f"Level: {registration['level']}")
+                        st.write(f"Session: {registration['session']}")
+                    
+                    with col2:
+                        st.write("**Academic Information**")
+                        st.write(f"Academic Year: {registration['academic_year']}")
+                        st.write(f"Semester: {registration['semester']}")
+                        st.write(f"Total Credits: {registration['total_credits']}")
+                    
+                    st.write("**Courses**")
+                    st.write(registration['courses'])
                 
-                st.write("**Courses**")
-                st.write(registration['courses'])
+                with tab2:
+                    # Edit form
+                    edited_reg = {}
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        edited_reg['programme'] = st.selectbox(
+                            "Programme",
+                            ["CIMG", "CIM-UK", "ICAG", "ACCA"],
+                            index=["CIMG", "CIM-UK", "ICAG", "ACCA"].index(registration['programme']),
+                            key=f"prog_{registration['registration_id']}"
+                        )
+                        edited_reg['level'] = st.text_input("Level", registration['level'], key=f"level_{registration['registration_id']}")
+                        edited_reg['session'] = st.selectbox(
+                            "Session",
+                            ["Morning", "Evening", "Weekend"],
+                            index=["Morning", "Evening", "Weekend"].index(registration['session']),
+                            key=f"session_{registration['registration_id']}"
+                        )
+                    
+                    with col2:
+                        edited_reg['academic_year'] = st.text_input("Academic Year", registration['academic_year'], key=f"year_{registration['registration_id']}")
+                        edited_reg['semester'] = st.selectbox(
+                            "Semester",
+                            ["First", "Second", "Third"],
+                            index=["First", "Second", "Third"].index(registration['semester']),
+                            key=f"sem_{registration['registration_id']}"
+                        )
+                        edited_reg['approval_status'] = st.selectbox(
+                            "Status",
+                            ["pending", "approved", "rejected"],
+                            index=["pending", "approved", "rejected"].index(registration['approval_status']),
+                            key=f"reg_status_{registration['registration_id']}"
+                        )
+                    
+                    if st.button("Save Changes", key=f"save_reg_{registration['registration_id']}"):
+                        try:
+                            c = conn.cursor()
+                            update_query = """
+                                UPDATE course_registration 
+                                SET programme=?, level=?, session=?, 
+                                    academic_year=?, semester=?, approval_status=?
+                                WHERE registration_id=?
+                            """
+                            c.execute(update_query, (
+                                edited_reg['programme'],
+                                edited_reg['level'],
+                                edited_reg['session'],
+                                edited_reg['academic_year'],
+                                edited_reg['semester'],
+                                edited_reg['approval_status'],
+                                registration['registration_id']
+                            ))
+                            conn.commit()
+                            st.success("Changes saved successfully!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error saving changes: {str(e)}")
                 
                 # Generate PDF button
                 if st.button("Generate PDF", key=f"pdf_reg_{registration['registration_id']}"):
@@ -1120,6 +1641,11 @@ def main():
         </style>
     """, unsafe_allow_html=True)
     
+    # Add this at the start of your main() function:
+    if 'db_initialized' not in st.session_state:
+        reset_db()
+        st.session_state.db_initialized = True
+    
     # Initialize session state
     if 'admin_logged_in' not in st.session_state:
         st.session_state.admin_logged_in = False
@@ -1160,5 +1686,3 @@ def main():
 if __name__ == "__main__":
     init_db()
     main()
-
-
