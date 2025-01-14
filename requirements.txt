@@ -5,7 +5,6 @@ Pillow
 plotly
 fitz
 PyMuPDF
-sqlite3
 zipfile
 pathlib
 PyMuPDF
