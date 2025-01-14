@@ -1,5 +1,7 @@
-Streamlit
+streamlit
+sqlite3
 pandas
-Pillow
 reportlab
-
+Pillow
+plotly
+fitz
