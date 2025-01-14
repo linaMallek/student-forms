@@ -14,7 +14,8 @@ import io
 import zipfile
 from pathlib import Path
 import shutil
-
+import plotly.express as px
+import fitz 
 
 
 
@@ -26,8 +27,6 @@ def reset_db():
     c = conn.cursor()
     
     # Drop existing tables
-    c.execute("DROP TABLE IF EXISTS course_registration")
-    c.execute("DROP TABLE IF EXISTS student_info")
     c.execute("DROP TABLE IF EXISTS admin")
     
     conn.commit()
@@ -52,7 +51,7 @@ def init_db():
     
     # Insert two admin users if they don't exist
     admins = [
-        ('admin1', 'admin123', 'admin1@school.edu'),
+        ('EdinamSD', 'prettyFLACO', 'edinam.ayisadu@gmail.com'),
         ('admin2', 'admin456', 'admin2@school.edu')
     ]
     
@@ -649,10 +648,27 @@ def view_student_info():
                     st.write(f"Aggregate Score: {selected_student['aggregate_score']}")
                     
                     st.write("**Documents**")
-                    docs = ["Ghana Card", "Passport Photo", "Transcript", "Certificate"]
-                    for doc in docs:
-                        doc_status = "✅" if selected_student.get(f"{doc.lower()}_uploaded") else "❌"
-                        st.write(f"{doc_status} {doc}")
+                    docs = {
+                        "Ghana Card": selected_student['ghana_card_path'],
+                        "Passport Photo": selected_student['passport_photo_path'],
+                        "Transcript": selected_student['transcript_path'],
+                        "Certificate": selected_student['certificate_path']
+                    }
+                    
+                    for doc_name, doc_path in docs.items():
+                        if doc_path:
+                            st.write(f"✅ {doc_name} uploaded")
+                            if doc_name == "Passport Photo":
+                                image = PILImage.open(doc_path)
+                                st.image(image, caption=doc_name, use_column_width=True)
+                            elif doc_name in ["Ghana Card", "Transcript", "Certificate"]:
+                                with fitz.open(doc_path) as pdf:
+                                    for page in pdf:
+                                        pix = page.get_pixmap()
+                                        img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
+                                        st.image(img, caption=f"{doc_name} Page {page.number + 1}", use_column_width=True)
+                        else:
+                            st.write(f"❌ {doc_name} not uploaded")
                 
                 # Add PDF generation button
                 if st.button("Generate PDF Report", key=f"pdf_{selected_student['student_id']}"):
@@ -668,6 +684,7 @@ def view_student_info():
         st.info(f"No students found for {program}")
     
     conn.close()
+
             
 def review_student_info(form_data, uploaded_files):
     st.subheader("Review Student Information")
@@ -1437,6 +1454,8 @@ def manage_course_registrations():
     
     conn.close()
 
+import plotly.express as px
+
 def generate_reports():
     st.subheader("Generate Reports")
     
@@ -1456,7 +1475,8 @@ def generate_reports():
             conn
         )
         st.write("**Gender Distribution**")
-        st.bar_chart(gender_dist.set_index('gender'))
+        fig = px.pie(gender_dist, names='gender', values='count', title='Gender Distribution')
+        st.plotly_chart(fig)
         
         # Programme distribution
         prog_dist = pd.read_sql_query(
@@ -1464,7 +1484,8 @@ def generate_reports():
             conn
         )
         st.write("**Programme Distribution**")
-        st.bar_chart(prog_dist.set_index('programme'))
+        fig = px.pie(prog_dist, names='programme', values='count', title='Programme Distribution')
+        st.plotly_chart(fig)
         
     elif report_type == "Course Registration Summary":
         summary = pd.read_sql_query("""
@@ -1489,10 +1510,12 @@ def generate_reports():
         col1, col2 = st.columns(2)
         with col1:
             st.write("**Student Info Approval Status**")
-            st.pie_chart(student_status.set_index('approval_status'))
+            fig = px.pie(student_status, names='approval_status', values='count', title='Student Info Approval Status')
+            st.plotly_chart(fig)
         with col2:
             st.write("**Course Registration Approval Status**")
-            st.pie_chart(course_status.set_index('approval_status'))
+            fig = px.pie(course_status, names='approval_status', values='count', title='Course Registration Approval Status')
+            st.plotly_chart(fig)
     
     conn.close()
     
@@ -1686,3 +1709,5 @@ def main():
 if __name__ == "__main__":
     init_db()
     main()
+
+
