@@ -5,7 +5,6 @@ Pillow
 plotly
 fitz
 PyMuPDF
-zipfile
 pathlib
 PyMuPDF
 shutil
