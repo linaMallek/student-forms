@@ -15,7 +15,8 @@ import zipfile
 from pathlib import Path
 import shutil
 import plotly.express as px
-import fitz 
+import fitz
+
 
 
 
@@ -48,24 +49,24 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    
+
     # Insert two admin users if they don't exist
     admins = [
         ('EdinamSD', 'prettyFLACO', 'edinam.ayisadu@gmail.com'),
         ('admin2', 'admin456', 'admin2@school.edu')
     ]
-    
+
     for admin in admins:
         c.execute('''
             INSERT OR IGNORE INTO admin (username, password, email) 
             VALUES (?, ?, ?)
         ''', admin)
-    
+
     c.execute('''
         INSERT OR IGNORE INTO admin (username, password, email) 
         VALUES (?, ?, ?)
     ''', ('admin', 'admin123', 'admin@school.edu'))
-    
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_info (
             student_id TEXT PRIMARY KEY,
@@ -104,7 +105,7 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS course_registration (
             registration_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -120,10 +121,23 @@ def init_db():
             total_credits INTEGER,
             date_registered DATE,
             approval_status TEXT DEFAULT 'pending',
+            receipt_path TEXT,
+            receipt_amount REAL DEFAULT 0.0,
             FOREIGN KEY (student_id) REFERENCES student_info (student_id)
         )
     ''')
-    
+
+    # Add receipt fields if they don't exist (safe migration)
+    try:
+        c.execute("SELECT receipt_path FROM course_registration LIMIT 1")
+    except sqlite3.OperationalError:
+        c.execute("ALTER TABLE course_registration ADD COLUMN receipt_path TEXT")
+        
+    try:
+        c.execute("SELECT receipt_amount FROM course_registration LIMIT 1")
+    except sqlite3.OperationalError:
+        c.execute("ALTER TABLE course_registration ADD COLUMN receipt_amount REAL DEFAULT 0.0")
+
     conn.commit()
     conn.close()
     
@@ -727,16 +741,16 @@ def review_student_info(form_data, uploaded_files):
     
     st.write("**Uploaded Documents**")
     for doc_name, file in uploaded_files.items():
-        if file:
-            if doc_name == 'Receipt':
-                st.write(f"✅ {doc_name} uploaded - {file.name}")
-                # Display receipt preview if it's an image
-                if file.type.startswith('image/'):
-                    st.image(file, caption="Payment Receipt", width=300)
+        if doc_name == 'Receipt':
+            if file:
+                st.write(f"✅ {doc_name} uploaded (Optional)")
             else:
-                st.write(f"✅ {doc_name} uploaded")
+                st.write(f"⚪ {doc_name} not uploaded (Optional)")
         else:
-            st.write(f"❌ {doc_name} not uploaded")
+            if file:
+                st.write(f"✅ {doc_name} uploaded")
+            else:
+                st.write(f"❌ {doc_name} not uploaded")
             
 def review_course_registration(form_data):
     st.subheader("Review Course Registration")
@@ -853,13 +867,16 @@ def student_info_form():
     with col10:
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
         certificate = st.file_uploader("Upload Certificate", type=['pdf'])
-        receipt = st.file_uploader("Upload Payment Receipt", type=['pdf', 'jpg', 'png'])
+        # Make receipt optional
+        st.write("Optional Payment Receipt")
+        receipt = st.file_uploader("Upload Payment Receipt (Optional)", type=['pdf', 'jpg', 'png'])
         st.markdown('</div>', unsafe_allow_html=True)
         
-        # Add receipt amount verification
-        receipt_amount = st.number_input("Receipt Amount (GHS)", min_value=0.0, format="%.2f")
-        if receipt_amount < 100.0:  # Example minimum amount
-            st.warning("Receipt amount seems low. Please verify the payment amount.")
+        # Make receipt amount optional
+        if receipt:
+            receipt_amount = st.number_input("Receipt Amount (GHS)", min_value=0.0, format="%.2f")
+            if receipt_amount < 100.0:
+                st.warning("Receipt amount seems low. Please verify the payment amount.")
 
     uploaded_files = {
         'Ghana Card': ghana_card,
@@ -870,10 +887,7 @@ def student_info_form():
     }
 
     if st.button("Review Information"):
-        if not receipt:
-            st.error("Payment receipt is required to proceed.")
-            return
-            
+        # Remove receipt validation check
         st.session_state.review_mode = True
         st.session_state.form_data = form_data
         st.session_state.uploaded_files = uploaded_files
@@ -894,7 +908,7 @@ def student_info_form():
                 passport_photo_path = save_uploaded_file(passport_photo, "uploads")
                 transcript_path = save_uploaded_file(transcript, "uploads")
                 certificate_path = save_uploaded_file(certificate, "uploads")
-                receipt_path = save_uploaded_file(receipt, "uploads")
+                receipt_path = save_uploaded_file(receipt, "uploads") if receipt else None
                 
                 conn = sqlite3.connect('student_registration.db')
                 c = conn.cursor()
@@ -925,7 +939,64 @@ def student_info_form():
                 finally:
                     conn.close()
                     
-                    
+def download_all_documents():
+    """
+    Creates a zip file containing all uploaded documents and images from the database.
+    Returns the path to the zip file.
+    """
+    # Create a temporary directory for organizing files
+    temp_dir = "temp_downloads"
+    if not os.path.exists(temp_dir):
+        os.makedirs(temp_dir)
+    
+    try:
+        conn = sqlite3.connect('student_registration.db')
+        cursor = conn.cursor()
+        
+        # Get all student records with their documents
+        cursor.execute("""
+            SELECT student_id, surname, other_names, 
+                   ghana_card_path, passport_photo_path, 
+                   transcript_path, certificate_path, receipt_path 
+            FROM student_info
+        """)
+        students = cursor.fetchall()
+        
+        # Create zip file
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        zip_filename = f"all_documents_{timestamp}.zip"
+        
+        with zipfile.ZipFile(zip_filename, 'w') as zipf:
+            for student in students:
+                student_id, surname, other_names = student[0:3]
+                documents = student[3:]
+                doc_names = ['ghana_card', 'passport_photo', 'transcript', 'certificate', 'receipt']
+                
+                # Create a directory for each student
+                student_dir = f"{student_id}_{surname}_{other_names}"
+                
+                # Add each document to the zip file
+                for doc_path, doc_name in zip(documents, doc_names):
+                    if doc_path and os.path.exists(doc_path):
+                        # Get file extension from original file
+                        _, ext = os.path.splitext(doc_path)
+                        # Create archive path with proper structure
+                        archive_path = f"{student_dir}/{doc_name}{ext}"
+                        # Add file to zip
+                        zipf.write(doc_path, archive_path)
+        
+        return zip_filename
+    
+    except Exception as e:
+        st.error(f"Error creating zip file: {str(e)}")
+        return None
+    
+    finally:
+        conn.close()
+        # Clean up temporary directory
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+ 
 def course_registration_form():
     st.header("📚 Course Registration Form (A7)")
     
@@ -955,24 +1026,18 @@ def course_registration_form():
         form_data['semester'] = st.selectbox("Semester", ["First", "Second", "Third"])
     
     st.subheader("Course Selection")
-    # Get courses for selected program and level
     available_courses = get_program_courses(form_data['programme']).get(form_data['level'], [])
     
-    # Create multiselect for courses
     selected_courses = st.multiselect(
         "Select Courses",
         available_courses,
         format_func=lambda x: f"{x.split('|')[0]} - {x.split('|')[1]} ({x.split('|')[2]} credits)"
     )
     
-    # Calculate total credits
     total_credits = sum([int(course.split("|")[2]) for course in selected_courses])
-    
-    # Display selected courses in text area
     form_data['courses'] = "\n".join(selected_courses)
-    st.text_area("Selected Courses", form_data['courses'], height=150, disabled=True)
     
-    # Display and store total credits
+    st.text_area("Selected Courses", form_data['courses'], height=150, disabled=True)
     form_data['total_credits'] = st.number_input(
         "Total Credit Hours", 
         value=total_credits,
@@ -984,6 +1049,29 @@ def course_registration_form():
     if total_credits > 24:
         st.error("Total credits cannot exceed 24 hours!")
         return
+
+    # Add receipt section
+    st.subheader("📎 Payment Information (Optional)")
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        receipt = st.file_uploader("Upload Payment Receipt (Optional)", type=['pdf', 'jpg', 'png'])
+        if receipt:
+            form_data['receipt_path'] = save_uploaded_file(receipt, "uploads")
+        else:
+            form_data['receipt_path'] = None
+    
+    with col4:
+        if receipt:
+            form_data['receipt_amount'] = st.number_input(
+                "Receipt Amount (GHS)", 
+                min_value=0.0,
+                format="%.2f"
+            )
+            if form_data['receipt_amount'] < 100.0:
+                st.warning("Receipt amount seems low. Please verify the payment amount.")
+        else:
+            form_data['receipt_amount'] = 0.0
 
     if st.button("Review Registration"):
         st.session_state.review_mode = True
@@ -1009,17 +1097,18 @@ def course_registration_form():
                         INSERT INTO course_registration 
                         (student_id, index_number, programme, specialization, level, 
                         session, academic_year, semester, courses, total_credits, 
-                        date_registered, approval_status)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        date_registered, approval_status, receipt_path, receipt_amount)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''', (form_data['student_id'], form_data['index_number'],
                           form_data['programme'], form_data['specialization'],
                           form_data['level'], form_data['session'],
                           form_data['academic_year'], form_data['semester'],
                           form_data['courses'], form_data['total_credits'],
-                          datetime.now().date(), 'pending'))
+                          datetime.now().date(), 'pending',
+                          form_data['receipt_path'], form_data['receipt_amount']))
                     conn.commit()
                     st.success("Course registration submitted! Pending admin approval.")
-                    # Generate PDF after successful submission
+                    
                     pdf_file = generate_course_registration_pdf(form_data)
                     with open(pdf_file, "rb") as file:
                         st.download_button(
@@ -1057,43 +1146,67 @@ def admin_dashboard():
 def manage_database():
     st.subheader("Database Management")
     
-    # Export complete database
-    st.write("### Export Complete Database")
-    if st.button("Download Complete Database"):
-        try:
-            # Create a ZIP file containing all database tables
-            zip_filename = f"complete_database_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
-            
-            conn = sqlite3.connect('student_registration.db')
-            
-            # Get all tables
-            tables = {
-                "student_info": pd.read_sql_query("SELECT * FROM student_info", conn),
-                "course_registration": pd.read_sql_query("SELECT * FROM course_registration", conn),
-            }
-            
-            # Create ZIP file
-            with zipfile.ZipFile(zip_filename, 'w') as zipf:
-                for table_name, df in tables.items():
-                    csv_filename = f"{table_name}.csv"
-                    df.to_csv(csv_filename, index=False)
-                    zipf.write(csv_filename)
-                    os.remove(csv_filename)  # Clean up CSV file
-            
-            # Provide download button for ZIP file
-            with open(zip_filename, "rb") as f:
-                st.download_button(
-                    label="Download Database ZIP",
-                    data=f,
-                    file_name=zip_filename,
-                    mime="application/zip"
-                )
-            
-            os.remove(zip_filename)  # Clean up ZIP file
-            conn.close()
-            
-        except Exception as e:
-            st.error(f"Error exporting database: {str(e)}")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Export complete database
+        st.write("### Export Complete Database")
+        if st.button("Download Complete Database"):
+            try:
+                # Create a ZIP file containing all database tables
+                zip_filename = f"complete_database_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+                
+                conn = sqlite3.connect('student_registration.db')
+                
+                # Get all tables
+                tables = {
+                    "student_info": pd.read_sql_query("SELECT * FROM student_info", conn),
+                    "course_registration": pd.read_sql_query("SELECT * FROM course_registration", conn),
+                }
+                
+                # Create ZIP file
+                with zipfile.ZipFile(zip_filename, 'w') as zipf:
+                    for table_name, df in tables.items():
+                        csv_filename = f"{table_name}.csv"
+                        df.to_csv(csv_filename, index=False)
+                        zipf.write(csv_filename)
+                        os.remove(csv_filename)  # Clean up CSV file
+                
+                # Provide download button for ZIP file
+                with open(zip_filename, "rb") as f:
+                    st.download_button(
+                        label="Download Database ZIP",
+                        data=f,
+                        file_name=zip_filename,
+                        mime="application/zip"
+                    )
+                
+                os.remove(zip_filename)  # Clean up ZIP file
+                conn.close()
+                
+            except Exception as e:
+                st.error(f"Error exporting database: {str(e)}")
+                
+    with col2:
+        # New document download functionality
+        st.write("### Download All Documents")
+        if st.button("Download All Documents"):
+            with st.spinner("Creating zip file of all documents..."):
+                zip_file = download_all_documents()
+                if zip_file and os.path.exists(zip_file):
+                    with open(zip_file, "rb") as f:
+                        st.download_button(
+                            label="Download Documents ZIP",
+                            data=f,
+                            file_name=zip_file,
+                            mime="application/zip"
+                        )
+                    # Clean up zip file after download button is created
+                    os.remove(zip_file)
+                else:
+                    st.error("Error creating zip file or no documents found")
+                
+
 
 def show_pending_approvals():
     st.subheader("Pending Approvals")
