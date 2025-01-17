@@ -125,7 +125,6 @@ def reset_db():
     
     # Drop existing tables
     c.execute("DROP TABLE IF EXISTS admin")
-
     
     conn.commit()
     conn.close()
@@ -190,17 +189,17 @@ def get_program_courses(program):
             ]
         },
         "CIM-UK": {
-            "Level 4": [
+            "Foundation Certificate": [
                 "CIM101|Marketing Principles|6",
                 "CIM102|Communications in Practice|6",
                 "CIM103|Customer Communications|6"
             ],
-            "Level 5": [
+            "Certificate in Professional Marketing": [
                 "CIM201|Applied Marketing|6",
                 "CIM202|Planning Campaigns|6",
                 "CIM203|Customer Insights|6"
             ],
-            "Level 6": [
+            "Diploma in Professional Marketing": [
                 "CIM301|Marketing & Digital Strategy|6",
                 "CIM302|Innovation in Marketing|6",
                 "CIM303|Resource Management|6"
@@ -236,12 +235,12 @@ def get_program_courses(program):
             ]
         },
         "ACCA": {
-            "Level 1 (Applied Knowledge)": [
+            "Applied Knowledge": [
                 "AB101|Accountant in Business|3",
                 "MA101|Management Accounting|3",
                 "FA101|Financial Accounting|3"
             ],
-            "Level 2 (Applied Skills)": [
+            "Applied Skills": [
                 "LW201|Corporate and Business Law|3",
                 "PM201|Performance Management|3",
                 "TX201|Taxation|3",
@@ -249,7 +248,7 @@ def get_program_courses(program):
                 "AA201|Audit and Assurance|3",
                 "FM201|Financial Management|3"
             ],
-            "Level 3 Strategic Professional (Essentials)": [
+            "Strategic Professional (Essentials)": [
                 "SBL301|Strategic Business Leader|6",
                 "SBR301|Strategic Business Reporting|6"
             ],
@@ -1004,8 +1003,7 @@ def student_info_form():
                     
 def download_all_documents():
     """
-    Creates a zip file containing all uploaded documents and images from both
-    student information and course registration tables.
+    Creates a zip file containing all uploaded documents and images from the database.
     Returns the path to the zip file.
     """
     # Create a temporary directory for organizing files
@@ -1026,31 +1024,22 @@ def download_all_documents():
                 receipt_amount
             FROM student_info
         """)
-        students = cursor.fetchall()
         
-        # Fetch all course registration records with receipts
-        cursor.execute("""
-            SELECT cr.registration_id, cr.student_id, si.surname, si.other_names,
-                   cr.receipt_path, cr.receipt_amount
-            FROM course_registration cr
-            LEFT JOIN student_info si ON cr.student_id = si.student_id
-            WHERE cr.receipt_path IS NOT NULL
-        """)
-        registrations = cursor.fetchall()
+        # Store the results before closing the cursor
+        students = cursor.fetchall()
         
         # Create a timestamped zip file
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         zip_filename = f"all_documents_{timestamp}.zip"
         
         with zipfile.ZipFile(zip_filename, 'w') as zipf:
-            # Add student documents
             for student in students:
                 student_id, surname, other_names = student[:3]
                 documents = student[3:8]  # All document paths
                 doc_names = ['ghana_card', 'passport_photo', 'transcript', 'certificate', 'receipt']
                 
                 # Create a directory name for each student
-                student_dir = f"student_documents/{student_id}_{surname}_{other_names}"
+                student_dir = f"{student_id}_{surname}_{other_names}"
                 
                 # Add each document to the zip file
                 for doc_path, doc_name in zip(documents, doc_names):
@@ -1061,21 +1050,6 @@ def download_all_documents():
                         archive_path = f"{student_dir}/{doc_name}{ext}"
                         # Add file to the zip
                         zipf.write(doc_path, archive_path)
-            
-            # Add course registration receipts
-            for registration in registrations:
-                reg_id, student_id, surname, other_names, receipt_path, receipt_amount = registration
-                
-                if receipt_path and os.path.exists(receipt_path):
-                    # Create a directory for course registration receipts
-                    reg_dir = f"course_registration_receipts/{student_id}_{surname}_{other_names}"
-                    
-                    # Get file extension from the original file
-                    _, ext = os.path.splitext(receipt_path)
-                    # Create archive path with proper structure
-                    archive_path = f"{reg_dir}/registration_{reg_id}_receipt{ext}"
-                    # Add file to the zip
-                    zipf.write(receipt_path, archive_path)
         
         return zip_filename
 
@@ -1734,178 +1708,90 @@ def manage_course_registrations():
 import plotly.express as px
 
 def generate_reports():
-    """
-    Generate various types of reports including:
-    - Student Statistics
-    - Course Registration Summary
-    - Approval Status Summary
-    - Payment Statistics
-    """
     st.subheader("Generate Reports")
-
-    # Report type selection
-    report_type = st.selectbox(
-        "Select Report Type",
-        [
-            "Student Statistics",
-            "Course Registration Summary",
-            "Approval Status Summary",
-            "Payment Statistics",
-        ],
-    )
-
-    # Connect to the database
+    
+    report_type = st.selectbox("Select Report Type", [
+        "Student Statistics",
+        "Course Registration Summary",
+        "Approval Status Summary",
+        "Programme Statistics"
+    ])
+    
     conn = sqlite3.connect('student_registration.db')
-
+    
     if report_type == "Student Statistics":
         # Gender distribution
         gender_dist = pd.read_sql_query(
             "SELECT gender, COUNT(*) as count FROM student_info GROUP BY gender",
             conn
         )
-        if not gender_dist.empty:
-            st.write("**Gender Distribution**")
-            fig = px.pie(
-                gender_dist, 
-                names='gender', 
-                values='count', 
-                title='Gender Distribution'
-            )
-            st.plotly_chart(fig)
-        else:
-            st.info("No gender distribution data available")
-
+        st.write("**Gender Distribution**")
+        fig = px.pie(gender_dist, names='gender', values='count', title='Gender Distribution')
+        st.plotly_chart(fig)
+        
         # Programme distribution
         prog_dist = pd.read_sql_query(
             "SELECT programme, COUNT(*) as count FROM course_registration GROUP BY programme",
             conn
         )
-        if not prog_dist.empty:
-            st.write("**Programme Distribution**")
-            fig = px.pie(
-                prog_dist, 
-                names='programme', 
-                values='count', 
-                title='Programme Distribution'
-            )
-            st.plotly_chart(fig)
-        else:
-            st.info("No programme distribution data available")
-
+        st.write("**Programme Distribution**")
+        fig = px.pie(prog_dist, names='programme', values='count', title='Programme Distribution')
+        st.plotly_chart(fig)
+        
     elif report_type == "Course Registration Summary":
-        summary = pd.read_sql_query(
-            """
+        summary = pd.read_sql_query("""
             SELECT cr.programme, cr.level, cr.semester, 
                    COUNT(*) as registrations,
                    AVG(cr.total_credits) as avg_credits
             FROM course_registration cr
             GROUP BY cr.programme, cr.level, cr.semester
-            """, 
-            conn
-        )
-        if not summary.empty:
-            st.write("**Course Registration Summary**")
-            st.dataframe(summary)
-        else:
-            st.info("No course registration data available")
-
+        """, conn)
+        st.write(summary)
+        
     elif report_type == "Approval Status Summary":
-        # Student approval status
         student_status = pd.read_sql_query(
             "SELECT approval_status, COUNT(*) as count FROM student_info GROUP BY approval_status",
             conn
         )
-        # Course approval status
         course_status = pd.read_sql_query(
             "SELECT approval_status, COUNT(*) as count FROM course_registration GROUP BY approval_status",
             conn
         )
-
+        
         col1, col2 = st.columns(2)
         with col1:
-            if not student_status.empty:
-                st.write("**Student Info Approval Status**")
-                fig = px.pie(
-                    student_status, 
-                    names='approval_status', 
-                    values='count', 
-                    title='Student Info Approval Status'
-                )
-                st.plotly_chart(fig)
-            else:
-                st.info("No student approval status data available")
-
+            st.write("**Student Info Approval Status**")
+            fig = px.pie(student_status, names='approval_status', values='count', title='Student Info Approval Status')
+            st.plotly_chart(fig)
         with col2:
-            if not course_status.empty:
-                st.write("**Course Registration Approval Status**")
-                fig = px.pie(
-                    course_status, 
-                    names='approval_status', 
-                    values='count', 
-                    title='Course Registration Approval Status'
-                )
-                st.plotly_chart(fig)
-            else:
-                st.info("No course registration approval status data available")
+            st.write("**Course Registration Approval Status**")
+            fig = px.pie(course_status, names='approval_status', values='count', title='Course Registration Approval Status')
+            st.plotly_chart(fig)
+            
+    # Receipt statistics
+    receipt_stats = pd.read_sql_query("""
+        SELECT 
+            CASE 
+                WHEN receipt_path IS NOT NULL THEN 'With Receipt'
+                ELSE 'Without Receipt'
+            END as receipt_status,
+            COUNT(*) as count,
+            AVG(CASE WHEN receipt_amount IS NOT NULL THEN receipt_amount ELSE 0 END) as avg_amount
+        FROM student_info
+        GROUP BY CASE WHEN receipt_path IS NOT NULL THEN 'With Receipt' ELSE 'Without Receipt' END
+    """, conn)
 
-    elif report_type == "Payment Statistics":
-        # Receipt statistics
-        receipt_stats = pd.read_sql_query(
-            """
-            SELECT 
-                CASE 
-                    WHEN receipt_path IS NOT NULL THEN 'With Receipt'
-                    ELSE 'Without Receipt'
-                END as receipt_status,
-                COUNT(*) as count,
-                COALESCE(AVG(CASE WHEN receipt_amount IS NOT NULL THEN receipt_amount ELSE 0 END), 0) as avg_amount
-            FROM student_info
-            GROUP BY CASE 
-                        WHEN receipt_path IS NOT NULL THEN 'With Receipt'
-                        ELSE 'Without Receipt'
-                    END
-            """,
-            conn
-        )
-
-        st.write("**Receipt Statistics**")
-        if not receipt_stats.empty:
-            col1, col2 = st.columns(2)
-            with col1:
-                fig = px.pie(
-                    receipt_stats, 
-                    names='receipt_status', 
-                    values='count', 
-                    title='Receipt Upload Distribution'
-                )
-                st.plotly_chart(fig)
-
-            with col2:
-                with_receipt_data = receipt_stats[receipt_stats['receipt_status'] == 'With Receipt']
-                if not with_receipt_data.empty:
-                    avg_amount = with_receipt_data['avg_amount'].iloc[0]
-                    st.write(f"Average Receipt Amount: GHS {avg_amount:.2f}")
-                else:
-                    st.write("No receipt data available")
-
-                # Additional payment statistics
-                total_payments = pd.read_sql_query(
-                    """
-                    SELECT 
-                        COUNT(*) as total_receipts,
-                        COALESCE(SUM(receipt_amount), 0) as total_amount
-                    FROM student_info 
-                    WHERE receipt_path IS NOT NULL
-                    """,
-                    conn
-                )
-                st.write("**Payment Summary**")
-                st.write(f"Total Receipts: {total_payments['total_receipts'].iloc[0]}")
-                st.write(f"Total Amount: GHS {total_payments['total_amount'].iloc[0]:.2f}")
-        else:
-            st.info("No payment statistics available")
-
-    # Close the database connection
+    st.write("**Receipt Statistics**")
+    col1, col2 = st.columns(2)
+    with col1:
+        fig = px.pie(receipt_stats, names='receipt_status', values='count', 
+                    title='Receipt Upload Distribution')
+        st.plotly_chart(fig)
+    with col2:
+        st.write("Average Receipt Amount: GHS {:.2f}".format(
+            receipt_stats[receipt_stats['receipt_status'] == 'With Receipt']['avg_amount'].iloc[0]
+        ))
+    
     conn.close()
 
 
@@ -2100,5 +1986,3 @@ def main():
 if __name__ == "__main__":
     init_db()
     main()
-
-
