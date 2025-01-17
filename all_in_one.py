@@ -23,19 +23,6 @@ import fitz
 if not os.path.exists("uploads"):
     os.makedirs("uploads")
 
-def reset_db():
-    conn = sqlite3.connect('student_registration.db')
-    c = conn.cursor()
-    
-    # Drop existing tables
-    c.execute("DROP TABLE IF EXISTS admin")
-    
-    conn.commit()
-    conn.close()
-    
-    # Reinitialize the database
-    init_db()
-
 def init_db():
     conn = sqlite3.connect('student_registration.db')
     c = conn.cursor()
@@ -50,7 +37,7 @@ def init_db():
         )
     ''')
 
-    # Insert two admin users if they don't exist
+    # Insert admin users if they don't exist
     admins = [
         ('EdinamSD', 'prettyFLACO', 'edinam.ayisadu@gmail.com'),
         ('admin2', 'admin456', 'admin2@school.edu')
@@ -61,11 +48,6 @@ def init_db():
             INSERT OR IGNORE INTO admin (username, password, email) 
             VALUES (?, ?, ?)
         ''', admin)
-
-    c.execute('''
-        INSERT OR IGNORE INTO admin (username, password, email) 
-        VALUES (?, ?, ?)
-    ''', ('admin', 'admin123', 'admin@school.edu'))
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS student_info (
@@ -101,10 +83,17 @@ def init_db():
             transcript_path TEXT,
             certificate_path TEXT,
             receipt_path TEXT,
+            receipt_amount REAL DEFAULT 0.0,
             approval_status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+
+    # Add receipt_amount column if it doesn't exist
+    try:
+        c.execute("SELECT receipt_amount FROM student_info LIMIT 1")
+    except sqlite3.OperationalError:
+        c.execute("ALTER TABLE student_info ADD COLUMN receipt_amount REAL DEFAULT 0.0")
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS course_registration (
@@ -127,40 +116,78 @@ def init_db():
         )
     ''')
 
-    # Add receipt fields if they don't exist (safe migration)
-    try:
-        c.execute("SELECT receipt_path FROM course_registration LIMIT 1")
-    except sqlite3.OperationalError:
-        c.execute("ALTER TABLE course_registration ADD COLUMN receipt_path TEXT")
-        
-    try:
-        c.execute("SELECT receipt_amount FROM course_registration LIMIT 1")
-    except sqlite3.OperationalError:
-        c.execute("ALTER TABLE course_registration ADD COLUMN receipt_amount REAL DEFAULT 0.0")
-
     conn.commit()
     conn.close()
+
+def reset_db():
+    conn = sqlite3.connect('student_registration.db')
+    c = conn.cursor()
+    
+    # Drop existing tables
+    c.execute("DROP TABLE IF EXISTS admin")
+    c.execute("DROP TABLE IF EXISTS student_info")
+    c.execute("DROP TABLE IF EXISTS course_registration")
+    
+    conn.commit()
+    conn.close()
+    
+    # Reinitialize the database
+    init_db()
     
 def get_program_courses(program):
     courses = {
         "CIMG": {
-            "Foundation": [
-                "CIMG101|Marketing Essentials|3",
-                "CIMG102|Marketing Environment|3",
-                "CIMG103|Customer Insights|3",
-                "CIMG104|Integrated Marketing Communications|3"
+            "Pathway 1": [
+                "PCM 101|FUNDAMENTALS OF MARKETING|3",
+                "PCM 103|BUYER BEHAVIOUR|3",
+                "PCM 102|BUSINESS LAW AND ETHICS|3"
             ],
-            "Professional Certificate": [
-                "CIMG201|Strategic Marketing|3",
-                "CIMG202|Marketing Planning Process|3",
-                "CIMG203|Marketing Implementation|3",
-                "CIMG204|Marketing Metrics|3"
+            "Pathway 2": [
+                "PAC 202|MANAGEMENT IN PRACTICE|3",
+                "PCM 203|DIGITAL MARKETING TECHNIQUES|3",
+                "PAC 201|DECISION-MAKING TECHNIQUES|3"
             ],
-            "Professional Diploma": [
-                "CIMG301|Marketing Strategy Development|6",
-                "CIMG302|Leading Marketing|6",
-                "CIMG303|Marketing Leadership Decisions|6",
-                "CIMG304|Contemporary Marketing Issues|6"
+            "Pathway 3": [
+                "PDM 301|BRANDS MANAGEMENT|3",
+                "PDM 302|MARKETING RESEARCH AND INSIGHTS|3",
+                "PDM 304|DIGITAL OPTIMISATION AND STRATEGY|3",
+                "PDM 303|SELLING AND SALES MANAGEMENT|3"
+            ],
+            "Pathway 4": [
+                "PDA 407|MASTERING MARKETING METRICS|3",
+                "PDA 408|MANAGING CORPORATE REPUTATION|3",
+                "PDA 404|DIGITAL CUSTOMER EXPERIENCE|3",
+                "PDA 405|PRODUCT MANAGEMENT|3",
+                "PDA 403|MANAGING MARKETING PROJECTS|3",
+                "PDA 406|CUSTOMER RELATIONSHIP MANAGEMENT|3",
+                "PDA 402|FINANCIAL MANAGEMENT FOR MARKETERS|3",
+                "PDA 401|INTERNATIONAL MARKETING|3"
+            ],
+            "Pathway 5": [
+                "PGD 502|STRATEGIC MARKETING PRACTICE- CASE STUDY|3",
+                "PGD 503|STRATEGIC MARKETING MANAGEMENT|3",
+                "PGD 501|INTEGRATED MARKETING COMMUNICATIONS|3",
+                "PGD 504|ADVANCED DIGITAL MARKETING|3"
+            ],
+            "Pathway 6": [
+                "PMS 613|SPECIALISED COMMODITIES MARKETING|3",
+                "PMS 607|TRANSPORT AND LOGISTICS MARKETING|3",
+                "PMS 606|NGO MARKETING|3",
+                "PMS 608|AGRI-BUSINESS MARKETING|3",
+                "PMS 604|PUBLIC SECTOR MARKETING|3",
+                "PMS 601|FINANCIAL SERVICES MARKETING|3",
+                "PMS 611|EDUCATION, HEALTHCARE AND HOSPITALITY MARKETING|3",
+                "PMS 602|ENERGY MARKETING|3",
+                "PMS 610|PRINTING, COMMUNICATIONS AGENCY AND PUBLISHING MARKETING|3",
+                "PMS 609|TELECOMMUNICATIONS AND DIGITAL PLATFORM MARKETING|3",
+                "PMS 605|POLITICAL MARKETING|3",
+                "PMS 612|SPORTS AND ENTERTAINMENT MARKETING|3",
+                "PMS 603|FAST MOVING CONSUMER GOOD MARKETING|3"
+            ],
+            "Pathway 7": [
+                "PMD 701|MARKETING CONSULTANCY PRACTICE|3",
+                "PMD 703|PROFESSIONAL SERVICES MARKETING|3",
+                "PMD 702|CHANGE AND TRANSFORMATION MARKETING|3"
             ]
         },
         "CIM-UK": {
@@ -179,7 +206,7 @@ def get_program_courses(program):
                 "CIM302|Innovation in Marketing|6",
                 "CIM303|Resource Management|6"
             ],
-            "Postgraduate Diploma": [
+            "Level 7": [
                 "CIM401|Global Marketing Decisions|6",
                 "CIM402|Corporate Digital Communications|6",
                 "CIM403|Creating Entrepreneurial Change|6"
@@ -236,6 +263,7 @@ def get_program_courses(program):
         }
     }
     return courses.get(program, {})
+
 
 
 
@@ -376,6 +404,24 @@ def generate_student_info_pdf(data):
     elements.append(t)
     elements.append(Spacer(1, 20))
     
+    if data['receipt_path']:
+        elements.append(Paragraph("Payment Information", styles['SectionHeader']))
+        payment_info = [
+            ["Receipt Status:", "Uploaded"],
+            ["Receipt Amount:", f"GHS {data['receipt_amount']:.2f}"]
+        ]
+        t = Table(payment_info, colWidths=[2.5*inch, 4*inch])
+        t.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#003366')),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 20))
+    
     # Footer
     footer_style = ParagraphStyle(
         'Footer',
@@ -468,6 +514,24 @@ def generate_course_registration_pdf(data):
     ]))
     elements.append(t)
     elements.append(Spacer(1, 20))
+    
+    if data['receipt_path']:
+        elements.append(Paragraph("Payment Information", styles['SectionHeader']))
+        payment_info = [
+            ["Receipt Status:", "Uploaded"],
+            ["Receipt Amount:", f"GHS {data['receipt_amount']:.2f}"]
+        ]
+        t = Table(payment_info, colWidths=[2.5*inch, 4*inch])
+        t.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f0f0f0')),
+            ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#003366')),
+            ('PADDING', (0, 0), (-1, -1), 6),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ]))
+        elements.append(t)
+        elements.append(Spacer(1, 20))
     
     # Selected Courses Section
     elements.append(Paragraph("Selected Courses", styles['SectionHeader']))
@@ -948,52 +1012,57 @@ def download_all_documents():
     temp_dir = "temp_downloads"
     if not os.path.exists(temp_dir):
         os.makedirs(temp_dir)
-    
+
     try:
+        # Connect to the database
         conn = sqlite3.connect('student_registration.db')
         cursor = conn.cursor()
         
-        # Get all student records with their documents
+        # Fetch all student records with their documents
         cursor.execute("""
             SELECT student_id, surname, other_names, 
-                   ghana_card_path, passport_photo_path, 
-                   transcript_path, certificate_path, receipt_path 
+                ghana_card_path, passport_photo_path, 
+                transcript_path, certificate_path, receipt_path,
+                receipt_amount
             FROM student_info
         """)
+        
+        # Store the results before closing the cursor
         students = cursor.fetchall()
         
-        # Create zip file
+        # Create a timestamped zip file
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         zip_filename = f"all_documents_{timestamp}.zip"
         
         with zipfile.ZipFile(zip_filename, 'w') as zipf:
             for student in students:
-                student_id, surname, other_names = student[0:3]
-                documents = student[3:]
+                student_id, surname, other_names = student[:3]
+                documents = student[3:8]  # All document paths
                 doc_names = ['ghana_card', 'passport_photo', 'transcript', 'certificate', 'receipt']
                 
-                # Create a directory for each student
+                # Create a directory name for each student
                 student_dir = f"{student_id}_{surname}_{other_names}"
                 
                 # Add each document to the zip file
                 for doc_path, doc_name in zip(documents, doc_names):
                     if doc_path and os.path.exists(doc_path):
-                        # Get file extension from original file
+                        # Get file extension from the original file
                         _, ext = os.path.splitext(doc_path)
                         # Create archive path with proper structure
                         archive_path = f"{student_dir}/{doc_name}{ext}"
-                        # Add file to zip
+                        # Add file to the zip
                         zipf.write(doc_path, archive_path)
         
         return zip_filename
-    
+
     except Exception as e:
         st.error(f"Error creating zip file: {str(e)}")
         return None
-    
+
     finally:
+        # Close the database connection
         conn.close()
-        # Clean up temporary directory
+        # Clean up the temporary directory
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
  
@@ -1015,13 +1084,13 @@ def course_registration_form():
         program_levels = list(get_program_courses(form_data['programme']).keys())
         form_data['level'] = st.selectbox("Level/Part", program_levels)
         
-        form_data['specialization'] = st.text_input("Specialization")
+        form_data['specialization'] = st.text_input("Specialization (Optional)")
         
     with col2:
         form_data['session'] = st.selectbox("Session", ["Morning", "Evening", "Weekend"])
         form_data['academic_year'] = st.selectbox(
             "Academic Year", 
-            [f"{year}-{year+1}" for year in range(2023, 2030)]
+            [f"{year}-{year+1}" for year in range(2025, 2035)]
         )
         form_data['semester'] = st.selectbox("Semester", ["First", "Second", "Third"])
     
@@ -1160,8 +1229,18 @@ def manage_database():
                 
                 # Get all tables
                 tables = {
-                    "student_info": pd.read_sql_query("SELECT * FROM student_info", conn),
-                    "course_registration": pd.read_sql_query("SELECT * FROM course_registration", conn),
+                    "student_info": pd.read_sql_query("""
+                        SELECT *, 
+                            CASE WHEN receipt_path IS NOT NULL THEN 'Yes' ELSE 'No' END as has_receipt,
+                            receipt_amount
+                        FROM student_info
+                    """, conn),
+                    "course_registration": pd.read_sql_query("""
+                        SELECT *,
+                            CASE WHEN receipt_path IS NOT NULL THEN 'Yes' ELSE 'No' END as has_receipt,
+                            receipt_amount
+                        FROM course_registration
+                    """, conn)
                 }
                 
                 # Create ZIP file
@@ -1223,6 +1302,14 @@ def show_pending_approvals():
         for _, student in pending_students.iterrows():
             with st.expander(f"Student: {student['surname']} {student['other_names']}"):
                 st.write(student)
+                
+                # Add receipt information here
+                st.write("**Payment Information**")
+                if student['receipt_path']:
+                    st.write(f"Receipt Amount: GHS {student['receipt_amount']:.2f}")
+                else:
+                    st.write("No receipt uploaded (Optional)")
+                
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("Approve", key=f"approve_{student['student_id']}"):
@@ -1254,6 +1341,13 @@ def show_pending_approvals():
         for _, registration in pending_registrations.iterrows():
             with st.expander(f"Registration ID: {registration['registration_id']}"):
                 st.write(registration)
+
+            st.write("**Payment Information**")
+            if registration['receipt_path']:
+                st.write(f"Receipt Amount: GHS {registration['receipt_amount']:.2f}")
+            else:
+                st.write("No receipt uploaded (Optional)")
+                
                 col1, col2 = st.columns(2)
                 with col1:
                     if st.button("Approve", key=f"approve_reg_{registration['registration_id']}"):
@@ -1283,46 +1377,49 @@ def manage_student_records():
     
     # Sorting and filtering options
     col1, col2, col3 = st.columns([2,2,1])
-    
+
     with col1:
         sort_by = st.selectbox(
             "Sort by",
             ["Student ID", "Surname", "Date Added", "Programme"]
         )
-    
+
     with col2:
         sort_order = st.selectbox(
             "Order",
             ["Ascending", "Descending"]
         )
-    
+
     with col3:
         status_filter = st.selectbox(
             "Status",
             ["All", "Pending", "Approved", "Rejected"]
         )
-    
-    # Construct query
+
+    # Construct query with receipt fields
     conn = sqlite3.connect('student_registration.db')
-    
+
     sort_field = {
         "Student ID": "student_id",
         "Surname": "surname",
         "Date Added": "created_at",
         "Programme": "programme"
     }[sort_by]
-    
+
     order = "ASC" if sort_order == "Ascending" else "DESC"
-    
+
     query = f"""
-        SELECT * FROM student_info 
+        SELECT 
+            *,
+            COALESCE(receipt_amount, 0.0) as receipt_amount
+        FROM student_info 
         WHERE 1=1 
         {f"AND approval_status = '{status_filter.lower()}'" if status_filter != 'All' else ''}
         ORDER BY {sort_field} {order}
     """
-    
+
     df = pd.read_sql_query(query, conn)
-    
+
     if not df.empty:
         # Display students in a scrollable container
         st.write("### Student List")
@@ -1348,6 +1445,14 @@ def manage_student_records():
                             st.write(f"Phone: {student['telephone']}")
                             st.write(f"Ghana Card: {student['ghana_card_id']}")
                             st.write(f"Address: {student['residential_address']}")
+                            
+                            # Payment Information with proper handling
+                            st.write("**Payment Information**")
+                            if pd.notna(student['receipt_path']) and student['receipt_path']:
+                                st.write("✅ Receipt Uploaded")
+                                st.write(f"Receipt Amount: GHS {float(student['receipt_amount']):.2f}")
+                            else:
+                                st.write("⚪ No Receipt (Optional)")
                     
                     with tab2:
                         # Edit form
@@ -1359,7 +1464,7 @@ def manage_student_records():
                             edited_data['other_names'] = st.text_input("Other Names", student['other_names'], key=f"other_names_{student['student_id']}")
                             edited_data['email'] = st.text_input("Email", student['email'], key=f"email_{student['student_id']}")
                             edited_data['telephone'] = st.text_input("Telephone", student['telephone'], key=f"tel_{student['student_id']}")
-                            edited_data['ghana_card_id'] = st.text_input("Ghana Card", student['ghana_card_id'], key=f"ghana{student['ghana_card_id']}")
+                            edited_data['ghana_card_id'] = st.text_input("Ghana Card", student['ghana_card_id'], key=f"ghana_{student['student_id']}")
                         
                         with col2:
                             edited_data['residential_address'] = st.text_area("Residential Address", student['residential_address'], key=f"address_{student['student_id']}")
@@ -1369,6 +1474,16 @@ def manage_student_records():
                                 index=["pending", "approved", "rejected"].index(student['approval_status']),
                                 key=f"status_{student['student_id']}"
                             )
+                            
+                            # Receipt amount editing with proper handling
+                            if pd.notna(student['receipt_path']) and student['receipt_path']:
+                                edited_data['receipt_amount'] = st.number_input(
+                                    "Receipt Amount (GHS)",
+                                    value=float(student['receipt_amount']),
+                                    min_value=0.0,
+                                    format="%.2f",
+                                    key=f"receipt_amount_{student['student_id']}"
+                                )
                         
                         if st.button("Save Changes", key=f"save_{student['student_id']}"):
                             try:
@@ -1377,18 +1492,26 @@ def manage_student_records():
                                     UPDATE student_info 
                                     SET surname=?, other_names=?, email=?, telephone=?, ghana_card_id=?,
                                         residential_address=?, approval_status=?
+                                        {', receipt_amount=?' if 'receipt_amount' in edited_data else ''}
                                     WHERE student_id=?
                                 """
-                                c.execute(update_query, (
+                                
+                                params = [
                                     edited_data['surname'],
                                     edited_data['other_names'],
                                     edited_data['email'],
                                     edited_data['telephone'],
                                     edited_data['ghana_card_id'],
                                     edited_data['residential_address'],
-                                    edited_data['approval_status'],
-                                    student['student_id']
-                                ))
+                                    edited_data['approval_status']
+                                ]
+                                
+                                if 'receipt_amount' in edited_data:
+                                    params.append(edited_data['receipt_amount'])
+                                
+                                params.append(student['student_id'])
+                                
+                                c.execute(update_query, tuple(params))
                                 conn.commit()
                                 st.success("Changes saved successfully!")
                                 st.rerun()
@@ -1405,6 +1528,8 @@ def manage_student_records():
                             st.write("✅ Transcript")
                         if student['certificate_path']:
                             st.write("✅ Certificate")
+                        if student['receipt_path']:
+                            st.write("✅ Receipt")
                         
                         # Generate PDF button
                         if st.button("Generate PDF", key=f"pdf_{student['student_id']}"):
@@ -1418,7 +1543,7 @@ def manage_student_records():
                                 )
     else:
         st.info("No records found")
-    
+
     conn.close()
 
 def manage_course_registrations():
@@ -1492,6 +1617,12 @@ def manage_course_registrations():
                     
                     st.write("**Courses**")
                     st.write(registration['courses'])
+                    st.write("**Payment Information**")
+                    if registration['receipt_path']:
+                        st.write("✅ Receipt Uploaded")
+                        st.write(f"Receipt Amount: GHS {registration['receipt_amount']:.2f}")
+                    else:
+                        st.write("⚪ No Receipt (Optional)")
                 
                 with tab2:
                     # Edit form
@@ -1526,6 +1657,15 @@ def manage_course_registrations():
                             ["pending", "approved", "rejected"],
                             index=["pending", "approved", "rejected"].index(registration['approval_status']),
                             key=f"reg_status_{registration['registration_id']}"
+                        )
+                        
+                    if registration['receipt_path']:
+                        edited_reg['receipt_amount'] = st.number_input(
+                            "Receipt Amount (GHS)",
+                            value=float(registration['receipt_amount']),
+                            min_value=0.0,
+                            format="%.2f",
+                            key=f"receipt_amount_{registration['registration_id']}"
                         )
                     
                     if st.button("Save Changes", key=f"save_reg_{registration['registration_id']}"):
@@ -1629,9 +1769,35 @@ def generate_reports():
             st.write("**Course Registration Approval Status**")
             fig = px.pie(course_status, names='approval_status', values='count', title='Course Registration Approval Status')
             st.plotly_chart(fig)
+            
+    # Receipt statistics
+    receipt_stats = pd.read_sql_query("""
+        SELECT 
+            CASE 
+                WHEN receipt_path IS NOT NULL THEN 'With Receipt'
+                ELSE 'Without Receipt'
+            END as receipt_status,
+            COUNT(*) as count,
+            AVG(CASE WHEN receipt_amount IS NOT NULL THEN receipt_amount ELSE 0 END) as avg_amount
+        FROM student_info
+        GROUP BY CASE WHEN receipt_path IS NOT NULL THEN 'With Receipt' ELSE 'Without Receipt' END
+    """, conn)
+
+    st.write("**Receipt Statistics**")
+    col1, col2 = st.columns(2)
+    with col1:
+        fig = px.pie(receipt_stats, names='receipt_status', values='count', 
+                    title='Receipt Upload Distribution')
+        st.plotly_chart(fig)
+    with col2:
+        st.write("Average Receipt Amount: GHS {:.2f}".format(
+            receipt_stats[receipt_stats['receipt_status'] == 'With Receipt']['avg_amount'].iloc[0]
+        ))
     
     conn.close()
-    
+
+
+
 def save_uploaded_file(uploaded_file, directory):
     if uploaded_file is not None:
         file_path = os.path.join("uploads", f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uploaded_file.name}")
