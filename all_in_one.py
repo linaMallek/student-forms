@@ -85,15 +85,16 @@ def init_db():
             receipt_path TEXT,
             receipt_amount REAL DEFAULT 0.0,
             approval_status TEXT DEFAULT 'pending',
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            programme TEXT
         )
     ''')
 
-    # Add receipt_amount column if it doesn't exist
+    # Add programme column if it doesn't exist
     try:
-        c.execute("SELECT receipt_amount FROM student_info LIMIT 1")
+        c.execute("SELECT programme FROM student_info LIMIT 1")
     except sqlite3.OperationalError:
-        c.execute("ALTER TABLE student_info ADD COLUMN receipt_amount REAL DEFAULT 0.0")
+        c.execute("ALTER TABLE student_info ADD COLUMN programme TEXT")
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS course_registration (
@@ -125,8 +126,7 @@ def reset_db():
     
     # Drop existing tables
     c.execute("DROP TABLE IF EXISTS admin")
-    c.execute("DROP TABLE IF EXISTS course_registration")
-    c.execute("DROP TABLE IF EXISTS student_info")
+
     
     conn.commit()
     conn.close()
@@ -191,17 +191,17 @@ def get_program_courses(program):
             ]
         },
         "CIM-UK": {
-            "Foundation Certificate": [
+            "Level 4": [
                 "CIM101|Marketing Principles|6",
                 "CIM102|Communications in Practice|6",
                 "CIM103|Customer Communications|6"
             ],
-            "Certificate in Professional Marketing": [
+            "Level 5": [
                 "CIM201|Applied Marketing|6",
                 "CIM202|Planning Campaigns|6",
                 "CIM203|Customer Insights|6"
             ],
-            "Diploma in Professional Marketing": [
+            "Level 6": [
                 "CIM301|Marketing & Digital Strategy|6",
                 "CIM302|Innovation in Marketing|6",
                 "CIM303|Resource Management|6"
@@ -237,12 +237,12 @@ def get_program_courses(program):
             ]
         },
         "ACCA": {
-            "Applied Knowledge": [
+            "Level 1 (Applied Knowledge)": [
                 "AB101|Accountant in Business|3",
                 "MA101|Management Accounting|3",
                 "FA101|Financial Accounting|3"
             ],
-            "Applied Skills": [
+            "Level 2 (Applied Skills)": [
                 "LW201|Corporate and Business Law|3",
                 "PM201|Performance Management|3",
                 "TX201|Taxation|3",
@@ -250,7 +250,7 @@ def get_program_courses(program):
                 "AA201|Audit and Assurance|3",
                 "FM201|Financial Management|3"
             ],
-            "Strategic Professional (Essentials)": [
+            "Level 3 Strategic Professional (Essentials)": [
                 "SBL301|Strategic Business Leader|6",
                 "SBR301|Strategic Business Reporting|6"
             ],
@@ -738,13 +738,13 @@ def view_student_info():
                             st.write(f"✅ {doc_name} uploaded")
                             if doc_name == "Passport Photo":
                                 image = PILImage.open(doc_path)
-                                st.image(image, caption=doc_name, use_column_width=True)
+                                st.image(image, caption=doc_name, use_container_width=True)
                             elif doc_name in ["Ghana Card", "Transcript", "Certificate"]:
                                 with fitz.open(doc_path) as pdf:
                                     for page in pdf:
                                         pix = page.get_pixmap()
                                         img = PILImage.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                                        st.image(img, caption=f"{doc_name} Page {page.number + 1}", use_column_width=True)
+                                        st.image(img, caption=f"{doc_name} Page {page.number + 1}", use_container_width=True)
                         else:
                             st.write(f"❌ {doc_name} not uploaded")
                 
@@ -817,14 +817,11 @@ def review_student_info(form_data, uploaded_files):
                 st.write(f"❌ {doc_name} not uploaded")
             
 def review_course_registration(form_data):
-    st.subheader("Review Course Registration")
-    
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.write("**Student Information**")
         st.write(f"Student ID: {form_data['student_id']}")
-        st.write(f"Index Number: {form_data['index_number']}")
         st.write(f"Programme: {form_data['programme']}")
         st.write(f"Level: {form_data['level']}")
         st.write(f"Specialization: {form_data['specialization']}")
@@ -834,7 +831,7 @@ def review_course_registration(form_data):
         st.write(f"Session: {form_data['session']}")
         st.write(f"Academic Year: {form_data['academic_year']}")
         st.write(f"Semester: {form_data['semester']}")
-    
+
     st.write("**Selected Courses**")
     if form_data['courses']:
         courses_list = form_data['courses'].split('\n')
@@ -853,15 +850,25 @@ def review_course_registration(form_data):
             st.write(f"**Total Credit Hours:** {form_data['total_credits']}")
     else:
         st.warning("No courses selected")
+        
+def save_student_info(form_data):
+    with sqlite3.connect('student_registration.db') as conn:
+        try:
+            cursor = conn.cursor()
+            # ... database operations ...
+            conn.commit()
+        except sqlite3.Error as e:
+            conn.rollback()
+            raise
   
-def student_info_form():
+def student_info_form(): 
     st.header("📝 Student Information Form")
-    
+
     form_data = {}
-    
+
     st.subheader("Personal Information")
     col1, col2 = st.columns(2)
-    
+
     with col1:
         form_data['student_id'] = st.text_input("Student ID")
         form_data['surname'] = st.text_input("Surname")
@@ -885,7 +892,7 @@ def student_info_form():
 
     st.subheader("Contact Information")
     col3, col4 = st.columns(2)
-    
+
     with col3:
         form_data['residential_address'] = st.text_area("Residential Address")
         form_data['postal_address'] = st.text_area("Postal Address")
@@ -897,7 +904,7 @@ def student_info_form():
 
     st.subheader("Guardian Information")
     col5, col6 = st.columns(2)
-    
+
     with col5:
         form_data['guardian_name'] = st.text_input("Guardian's Name")
         form_data['guardian_relationship'] = st.text_input("Relationship to Guardian")
@@ -909,7 +916,7 @@ def student_info_form():
 
     st.subheader("Educational Background")
     col7, col8 = st.columns(2)
-    
+
     with col7:
         form_data['previous_school'] = st.text_input("Previous School")
         form_data['qualification_type'] = st.text_input("Qualification Type")
@@ -920,14 +927,14 @@ def student_info_form():
 
     st.subheader("📎 Required Documents")
     col9, col10 = st.columns(2)
-    
+
     with col9:
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
         ghana_card = st.file_uploader("Upload Ghana Card", type=['pdf', 'jpg', 'png'])
         passport_photo = st.file_uploader("Upload Passport Photo", type=['jpg', 'png'])
         transcript = st.file_uploader("Upload Transcript", type=['pdf'])
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     with col10:
         st.markdown('<div class="upload-section">', unsafe_allow_html=True)
         certificate = st.file_uploader("Upload Certificate", type=['pdf'])
@@ -950,62 +957,72 @@ def student_info_form():
         'Receipt': receipt
     }
 
-    if st.button("Review Information"):
-        # Remove receipt validation check
-        st.session_state.review_mode = True
-        st.session_state.form_data = form_data
-        st.session_state.uploaded_files = uploaded_files
-        st.rerun()
-    
+    # Moved buttons to bottom of form
+    col_buttons = st.columns([2, 2, 1])  # Create three columns for better spacing
+
+    with col_buttons[0]:
+        if st.button("Review Information", use_container_width=True):
+            st.session_state.review_mode = True
+            st.session_state.form_data = form_data
+            st.session_state.uploaded_files = uploaded_files
+            st.rerun()
+
     if 'review_mode' in st.session_state and st.session_state.review_mode:
         review_student_info(st.session_state.form_data, st.session_state.uploaded_files)
         
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Edit Information"):
+        with col_buttons[1]:
+            if st.button("Edit Information", use_container_width=True):
                 st.session_state.review_mode = False
                 st.rerun()
         
-        with col2:
-            if st.button("Confirm and Submit"):
+        with col_buttons[2]:
+            if st.button("Confirm and Submit", use_container_width=True):
+                # Save uploaded files and get their paths
                 ghana_card_path = save_uploaded_file(ghana_card, "uploads")
                 passport_photo_path = save_uploaded_file(passport_photo, "uploads")
                 transcript_path = save_uploaded_file(transcript, "uploads")
                 certificate_path = save_uploaded_file(certificate, "uploads")
                 receipt_path = save_uploaded_file(receipt, "uploads") if receipt else None
                 
-                conn = sqlite3.connect('student_registration.db')
-                c = conn.cursor()
+                # Create file paths dictionary
+                file_paths = {
+                    'ghana_card_path': ghana_card_path,
+                    'passport_photo_path': passport_photo_path,
+                    'transcript_path': transcript_path,
+                    'certificate_path': certificate_path,
+                    'receipt_path': receipt_path
+                }
+                
+                # Update form data with receipt amount if present
+                if receipt and 'receipt_amount' in locals():
+                    form_data['receipt_amount'] = receipt_amount
                 
                 try:
-                    c.execute('''
-                        INSERT INTO student_info VALUES 
-                        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (form_data['student_id'], form_data['surname'], form_data['other_names'],
-                          form_data['date_of_birth'], form_data['place_of_birth'], form_data['home_town'],
-                          form_data['residential_address'], form_data['postal_address'], form_data['email'],
-                          form_data['telephone'], form_data['ghana_card_id'], form_data['nationality'], form_data['marital_status'],
-                          form_data['gender'], form_data['religion'], form_data['denomination'],
-                          form_data['disability_status'], form_data['disability_description'],
-                          form_data['guardian_name'], form_data['guardian_relationship'],
-                          form_data['guardian_occupation'], form_data['guardian_address'],
-                          form_data['guardian_telephone'], form_data['previous_school'],
-                          form_data['qualification_type'], form_data['completion_year'],
-                          form_data['aggregate_score'], ghana_card_path, passport_photo_path,
-                          transcript_path, certificate_path, receipt_path, 'pending', 
-                          datetime.now()))
+                    conn = sqlite3.connect('student_registration.db')
+                    c = conn.cursor()
+                    
+                    # Use the new insert_student_info function
+                    insert_student_info(c, form_data, file_paths)
+                    
                     conn.commit()
                     st.success("Information submitted successfully! Pending admin approval.")
-                        
                     st.session_state.review_mode = False
-                except sqlite3.IntegrityError as e:
+                    
+                except sqlite3.IntegrityError:
                     st.error("Student ID already exists!")
+                except Exception as e:
+                    st.error(f"An error occurred: {str(e)}")
                 finally:
                     conn.close()
                     
+def validate_file(uploaded_file, max_size_mb=5):
+    if uploaded_file.size > max_size_mb * 1024 * 1024:
+        raise ValueError(f"File size exceeds {max_size_mb}MB limit")                  
+                    
 def download_all_documents():
     """
-    Creates a zip file containing all uploaded documents and images from the database.
+    Creates a zip file containing all uploaded documents and images from both
+    student information and course registration tables.
     Returns the path to the zip file.
     """
     # Create a temporary directory for organizing files
@@ -1026,22 +1043,31 @@ def download_all_documents():
                 receipt_amount
             FROM student_info
         """)
-        
-        # Store the results before closing the cursor
         students = cursor.fetchall()
+        
+        # Fetch all course registration records with receipts
+        cursor.execute("""
+            SELECT cr.registration_id, cr.student_id, si.surname, si.other_names,
+                   cr.receipt_path, cr.receipt_amount
+            FROM course_registration cr
+            LEFT JOIN student_info si ON cr.student_id = si.student_id
+            WHERE cr.receipt_path IS NOT NULL
+        """)
+        registrations = cursor.fetchall()
         
         # Create a timestamped zip file
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         zip_filename = f"all_documents_{timestamp}.zip"
         
         with zipfile.ZipFile(zip_filename, 'w') as zipf:
+            # Add student documents
             for student in students:
                 student_id, surname, other_names = student[:3]
                 documents = student[3:8]  # All document paths
                 doc_names = ['ghana_card', 'passport_photo', 'transcript', 'certificate', 'receipt']
                 
                 # Create a directory name for each student
-                student_dir = f"{student_id}_{surname}_{other_names}"
+                student_dir = f"student_documents/{student_id}_{surname}_{other_names}"
                 
                 # Add each document to the zip file
                 for doc_path, doc_name in zip(documents, doc_names):
@@ -1052,6 +1078,21 @@ def download_all_documents():
                         archive_path = f"{student_dir}/{doc_name}{ext}"
                         # Add file to the zip
                         zipf.write(doc_path, archive_path)
+            
+            # Add course registration receipts
+            for registration in registrations:
+                reg_id, student_id, surname, other_names, receipt_path, receipt_amount = registration
+                
+                if receipt_path and os.path.exists(receipt_path):
+                    # Create a directory for course registration receipts
+                    reg_dir = f"course_registration_receipts/{student_id}_{surname}_{other_names}"
+                    
+                    # Get file extension from the original file
+                    _, ext = os.path.splitext(receipt_path)
+                    # Create archive path with proper structure
+                    archive_path = f"{reg_dir}/registration_{reg_id}_receipt{ext}"
+                    # Add file to the zip
+                    zipf.write(receipt_path, archive_path)
         
         return zip_filename
 
@@ -1068,129 +1109,120 @@ def download_all_documents():
  
 def course_registration_form():
     st.header("📚 Course Registration Form (A7)")
-    
+
+    # Initialize form data dictionary at the start
     form_data = {}
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        form_data['student_id'] = st.text_input("Student ID")
-        form_data['index_number'] = st.text_input("Index Number")
-        form_data['programme'] = st.selectbox(
-            "Programme",
-            ["CIMG", "CIM-UK", "ICAG", "ACCA"]
-        )
-        
-        # Get program levels
-        program_levels = list(get_program_courses(form_data['programme']).keys())
-        form_data['level'] = st.selectbox("Level/Part", program_levels)
-        
-        form_data['specialization'] = st.text_input("Specialization (Optional)")
-        
-    with col2:
-        form_data['session'] = st.selectbox("Session", ["Morning", "Evening", "Weekend"])
-        form_data['academic_year'] = st.selectbox(
-            "Academic Year", 
-            [f"{year}-{year+1}" for year in range(2025, 2035)]
-        )
-        form_data['semester'] = st.selectbox("Semester", ["First", "Second", "Third"])
-    
-    st.subheader("Course Selection")
-    available_courses = get_program_courses(form_data['programme']).get(form_data['level'], [])
-    
-    selected_courses = st.multiselect(
-        "Select Courses",
-        available_courses,
-        format_func=lambda x: f"{x.split('|')[0]} - {x.split('|')[1]} ({x.split('|')[2]} credits)"
-    )
-    
-    total_credits = sum([int(course.split("|")[2]) for course in selected_courses])
-    form_data['courses'] = "\n".join(selected_courses)
-    
-    st.text_area("Selected Courses", form_data['courses'], height=150, disabled=True)
-    form_data['total_credits'] = st.number_input(
-        "Total Credit Hours", 
-        value=total_credits,
-        min_value=0,
-        max_value=24,
-        disabled=True
-    )
-    
-    if total_credits > 24:
-        st.error("Total credits cannot exceed 24 hours!")
-        return
 
-    # Add receipt section
-    st.subheader("📎 Payment Information (Optional)")
-    col3, col4 = st.columns(2)
-    
-    with col3:
-        receipt = st.file_uploader("Upload Payment Receipt (Optional)", type=['pdf', 'jpg', 'png'])
-        if receipt:
-            form_data['receipt_path'] = save_uploaded_file(receipt, "uploads")
-        else:
-            form_data['receipt_path'] = None
-    
-    with col4:
-        if receipt:
-            form_data['receipt_amount'] = st.number_input(
-                "Receipt Amount (GHS)", 
-                min_value=0.0,
-                format="%.2f"
+    # Student identification
+    form_data['student_id'] = st.text_input("Student ID")
+
+    # Look up student information if provided
+    if form_data['student_id']:
+        conn = sqlite3.connect('student_registration.db')
+        c = conn.cursor()
+
+        # Modified query to only use student_id
+        c.execute("SELECT * FROM student_info WHERE student_id = ?", (form_data['student_id'],))
+        student_info = c.fetchone()
+
+        if student_info:
+            # Display student information
+            st.markdown("---")
+            col_photo, col_info = st.columns([1, 3])
+
+            with col_photo:
+                if student_info[28]:  # passport_photo_path index
+                    try:    
+                        image = PILImage.open(student_info[28])
+                        st.image(image, caption="Student Photo", width=150)
+                    except Exception as e:
+                        st.error(f"Error loading passport photo: {str(e)}")
+                else:
+                    st.warning("No passport photo available")
+
+            with col_info:
+                st.markdown(f"### {student_info[1]} {student_info[2]}")  # surname, other_names
+                st.write(f"**Student ID:** {student_info[0]}")
+                st.write(f"**Email:** {student_info[8]}")
+                st.write(f"**Phone:** {student_info[9]}")
+
+            # Continue form if student is found
+            col3, col4 = st.columns(2)
+            with col3:
+                form_data['programme'] = st.selectbox("Programme", ["CIMG", "CIM-UK", "ICAG", "ACCA"])
+                program_levels = list(get_program_courses(form_data['programme']).keys())
+                form_data['level'] = st.selectbox("Level/Part", program_levels)
+                form_data['specialization'] = st.text_input("Specialization (Optional)")
+            with col4:
+                form_data['session'] = st.selectbox("Session", ["Morning", "Evening", "Weekend"])
+                form_data['academic_year'] = st.selectbox(
+                    "Academic Year", [f"{year}-{year+1}" for year in range(2025, 2035)]
+                )
+                form_data['semester'] = st.selectbox("Semester", ["First", "Second", "Third"])
+
+            st.subheader("Course Selection")
+            available_courses = get_program_courses(form_data['programme']).get(form_data['level'], [])
+            selected_courses = st.multiselect(
+                "Select Courses",
+                available_courses,
+                format_func=lambda x: f"{x.split('|')[0]} - {x.split('|')[1]} ({x.split('|')[2]} credits)"
             )
-            if form_data['receipt_amount'] < 100.0:
-                st.warning("Receipt amount seems low. Please verify the payment amount.")
-        else:
-            form_data['receipt_amount'] = 0.0
 
-    if st.button("Review Registration"):
-        st.session_state.review_mode = True
-        st.session_state.form_data = form_data
-        st.rerun()
-    
-    if 'review_mode' in st.session_state and st.session_state.review_mode:
-        review_course_registration(form_data)
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("Edit Registration"):
-                st.session_state.review_mode = False
-                st.rerun()
-        
-        with col2:
+            total_credits = sum([int(course.split("|")[2]) for course in selected_courses])
+            form_data['courses'] = "\n".join(selected_courses)
+            form_data['total_credits'] = total_credits
+
+            st.text_area("Selected Courses", form_data['courses'], height=150, disabled=True)
+            st.number_input("Total Credit Hours", value=total_credits, min_value=0, max_value=24, disabled=True)
+
+            if total_credits > 24:
+                st.error("Total credits cannot exceed 24 hours!")
+                return
+
+            # Payment Information
+            st.subheader("📎 Payment Information (Optional)")
+            col5, col6 = st.columns(2)
+            with col5:
+                receipt = st.file_uploader("Upload Payment Receipt (Optional)", type=['pdf', 'jpg', 'png'])
+                form_data['receipt_path'] = save_uploaded_file(receipt, "uploads") if receipt else None
+            with col6:
+                form_data['receipt_amount'] = st.number_input(
+                    "Receipt Amount (GHS)", min_value=0.0, format="%.2f"
+                ) if receipt else 0.0
+
+            if st.button("Review Registration"):
+                review_course_registration(form_data)
+
+            # Submission
             if st.button("Confirm and Submit"):
-                conn = sqlite3.connect('student_registration.db')
-                c = conn.cursor()
-                
                 try:
+                    conn = sqlite3.connect('student_registration.db')
+                    c = conn.cursor()
                     c.execute('''
                         INSERT INTO course_registration 
-                        (student_id, index_number, programme, specialization, level, 
+                        (student_id, programme, specialization, level, 
                         session, academic_year, semester, courses, total_credits, 
                         date_registered, approval_status, receipt_path, receipt_amount)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (form_data['student_id'], form_data['index_number'],
-                          form_data['programme'], form_data['specialization'],
-                          form_data['level'], form_data['session'],
-                          form_data['academic_year'], form_data['semester'],
-                          form_data['courses'], form_data['total_credits'],
-                          datetime.now().date(), 'pending',
-                          form_data['receipt_path'], form_data['receipt_amount']))
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (
+                        form_data['student_id'], form_data['programme'],
+                        form_data['specialization'], form_data['level'], form_data['session'],
+                        form_data['academic_year'], form_data['semester'], form_data['courses'],
+                        form_data['total_credits'], datetime.now().date(), 'pending',
+                        form_data['receipt_path'], form_data['receipt_amount']
+                    ))
                     conn.commit()
                     st.success("Course registration submitted! Pending admin approval.")
-                    
-                    pdf_file = generate_course_registration_pdf(form_data)
-                    with open(pdf_file, "rb") as file:
-                        st.download_button(
-                            label="Download Registration Form",
-                            data=file,
-                            file_name=pdf_file,
-                            mime="application/pdf"
-                        )
-                    st.session_state.review_mode = False
                 except sqlite3.IntegrityError:
                     st.error("Error in registration. Please check if student ID exists.")
                 finally:
                     conn.close()
+        else:
+            st.warning("No matching student record found. Please verify the Student ID.")
+            return
+
+        conn.close()
+
 
 def admin_dashboard():
     st.title("Admin Dashboard")
@@ -1292,122 +1324,186 @@ def show_pending_approvals():
     
     tabs = st.tabs(["Student Information", "Course Registrations"])
     
-    with tabs[0]:
-        conn = sqlite3.connect('student_registration.db')
-        pending_students = pd.read_sql_query(
-            "SELECT * FROM student_info WHERE approval_status='pending'", 
-            conn
-        )
-        
-        for _, student in pending_students.iterrows():
-            with st.expander(f"Student: {student['surname']} {student['other_names']}"):
-                st.write(student)
-                
-                # Add receipt information here
-                st.write("**Payment Information**")
-                if student['receipt_path']:
-                    st.write(f"Receipt Amount: GHS {student['receipt_amount']:.2f}")
-                else:
-                    st.write("No receipt uploaded (Optional)")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("Approve", key=f"approve_{student['student_id']}"):
-                        c = conn.cursor()
-                        c.execute(
-                            "UPDATE student_info SET approval_status='approved' WHERE student_id=?",
-                            (student['student_id'],)
-                        )
-                        conn.commit()
-                        st.success("Approved!")
-                        st.rerun()
-                with col2:
-                    if st.button("Reject", key=f"reject_{student['student_id']}"):
-                        c = conn.cursor()
-                        c.execute(
-                            "UPDATE student_info SET approval_status='rejected' WHERE student_id=?",
-                            (student['student_id'],)
-                        )
-                        conn.commit()
-                        st.error("Rejected!")
-                        st.rerun()
+    conn = sqlite3.connect('student_registration.db')
     
-    with tabs[1]:
-        pending_registrations = pd.read_sql_query(
-            "SELECT * FROM course_registration WHERE approval_status='pending'", 
-            conn
-        )
-        
-        for _, registration in pending_registrations.iterrows():
-            with st.expander(f"Registration ID: {registration['registration_id']}"):
-                st.write(registration)
-
-            st.write("**Payment Information**")
-            if registration['receipt_path']:
-                st.write(f"Receipt Amount: GHS {registration['receipt_amount']:.2f}")
+    try:
+        with tabs[0]:
+            pending_students = pd.read_sql_query(
+                "SELECT * FROM student_info WHERE approval_status='pending'", 
+                conn
+            )
+            
+            if pending_students.empty:
+                st.info("No pending student applications")
             else:
-                st.write("No receipt uploaded (Optional)")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("Approve", key=f"approve_reg_{registration['registration_id']}"):
-                        c = conn.cursor()
-                        c.execute(
-                            "UPDATE course_registration SET approval_status='approved' WHERE registration_id=?",
-                            (registration['registration_id'],)
-                        )
-                        conn.commit()
-                        st.success("Approved!")
-                        st.rerun()
-                with col2:
-                    if st.button("Reject", key=f"reject_reg_{registration['registration_id']}"):
-                        c = conn.cursor()
-                        c.execute(
-                            "UPDATE course_registration SET approval_status='rejected' WHERE registration_id=?",
-                            (registration['registration_id'],)
-                        )
-                        conn.commit()
-                        st.error("Rejected!")
-                        st.rerun()
+                for _, student in pending_students.iterrows():
+                    with st.expander(f"Student: {student['surname']} {student['other_names']}"):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write("**Personal Information**")
+                            st.write(f"Student ID: {student['student_id']}")
+                            st.write(f"Name: {student['surname']} {student['other_names']}")
+                            st.write(f"Gender: {student['gender']}")
+                            st.write(f"Email: {student['email']}")
+                            st.write(f"Phone: {student['telephone']}")
+                        
+                        with col2:
+                            st.write("**Educational Background**")
+                            st.write(f"Previous School: {student['previous_school']}")
+                            st.write(f"Qualification: {student['qualification_type']}")
+                            st.write(f"Completion Year: {student['completion_year']}")
+                            
+                            st.write("**Payment Information**")
+                            if student['receipt_path']:
+                                st.write(f"Receipt Amount: GHS {student['receipt_amount']:.2f}")
+                                if os.path.exists(student['receipt_path']):
+                                    st.write(f"[View Receipt]({student['receipt_path']})")
+                            else:
+                                st.write("No receipt uploaded (Optional)")
+                        
+                        # Document Preview Section
+                        if student['passport_photo_path'] and os.path.exists(student['passport_photo_path']):
+                            try:
+                                image = PILImage.open(student['passport_photo_path'])
+                                st.image(image, width=150, caption="Passport Photo")
+                            except Exception as e:
+                                st.error(f"Error loading passport photo: {str(e)}")
+                        
+                        # Approval Actions
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("Approve", key=f"approve_{student['student_id']}"):
+                                c = conn.cursor()
+                                c.execute(
+                                    "UPDATE student_info SET approval_status='approved' WHERE student_id=?",
+                                    (student['student_id'],)
+                                )
+                                conn.commit()
+                                st.success("Application Approved!")
+                                st.rerun()
+                        with col2:
+                            if st.button("Reject", key=f"reject_{student['student_id']}"):
+                                c = conn.cursor()
+                                c.execute(
+                                    "UPDATE student_info SET approval_status='rejected' WHERE student_id=?",
+                                    (student['student_id'],)
+                                )
+                                conn.commit()
+                                st.error("Application Rejected!")
+                                st.rerun()
         
-        conn.close()
-        
+        with tabs[1]:
+            pending_registrations = pd.read_sql_query(
+                """
+                SELECT cr.*, si.surname, si.other_names 
+                FROM course_registration cr 
+                LEFT JOIN student_info si ON cr.student_id = si.student_id 
+                WHERE cr.approval_status='pending'
+                """, 
+                conn
+            )
+            
+            if pending_registrations.empty:
+                st.info("No pending course registrations")
+            else:
+                for _, registration in pending_registrations.iterrows():
+                    with st.expander(f"Registration ID: {registration['registration_id']} - {registration['surname']} {registration['other_names']}"):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.write("**Registration Details**")
+                            st.write(f"Student ID: {registration['student_id']}")
+                            st.write(f"Programme: {registration['programme']}")
+                            st.write(f"Level: {registration['level']}")
+                            st.write(f"Session: {registration['session']}")
+                        
+                        with col2:
+                            st.write("**Academic Information**")
+                            st.write(f"Academic Year: {registration['academic_year']}")
+                            st.write(f"Semester: {registration['semester']}")
+                            st.write(f"Total Credits: {registration['total_credits']}")
+                        
+                        st.write("**Selected Courses**")
+                        if registration['courses']:
+                            courses_list = registration['courses'].split('\n')
+                            table_data = []
+                            for course in courses_list:
+                                if '|' in course:
+                                    code, title, credits = course.split('|')
+                                    table_data.append([code, title, f"{credits} credits"])
+                            if table_data:
+                                df = pd.DataFrame(table_data, columns=['Course Code', 'Course Title', 'Credit Hours'])
+                                st.table(df)
+                        
+                        st.write("**Payment Information**")
+                        if registration['receipt_path']:
+                            st.write(f"Receipt Amount: GHS {registration['receipt_amount']:.2f}")
+                            if os.path.exists(registration['receipt_path']):
+                                st.write(f"[View Receipt]({registration['receipt_path']})")
+                        else:
+                            st.write("No receipt uploaded (Optional)")
+                        
+                        # Approval Actions
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("Approve", key=f"approve_reg_{registration['registration_id']}"):
+                                c = conn.cursor()
+                                c.execute(
+                                    "UPDATE course_registration SET approval_status='approved' WHERE registration_id=?",
+                                    (registration['registration_id'],)
+                                )
+                                conn.commit()
+                                st.success("Registration Approved!")
+                                st.rerun()
+                        with col2:
+                            if st.button("Reject", key=f"reject_reg_{registration['registration_id']}"):
+                                c = conn.cursor()
+                                c.execute(
+                                    "UPDATE course_registration SET approval_status='rejected' WHERE registration_id=?",
+                                    (registration['registration_id'],)
+                                )
+                                conn.commit()
+                                st.error("Registration Rejected!")
+                                st.rerun()
+    
+    finally:
+        conn.close()    
+            
+
 def manage_student_records():
     st.subheader("Student Records Management")
     
     # Sorting and filtering options
     col1, col2, col3 = st.columns([2,2,1])
-
+    
     with col1:
         sort_by = st.selectbox(
             "Sort by",
             ["Student ID", "Surname", "Date Added", "Programme"]
         )
-
+    
     with col2:
         sort_order = st.selectbox(
             "Order",
             ["Ascending", "Descending"]
         )
-
+    
     with col3:
         status_filter = st.selectbox(
             "Status",
             ["All", "Pending", "Approved", "Rejected"]
         )
-
-    # Construct query with receipt fields
+    
     conn = sqlite3.connect('student_registration.db')
-
     sort_field = {
         "Student ID": "student_id",
         "Surname": "surname",
         "Date Added": "created_at",
         "Programme": "programme"
     }[sort_by]
-
+    
     order = "ASC" if sort_order == "Ascending" else "DESC"
-
     query = f"""
         SELECT 
             *,
@@ -1417,121 +1513,206 @@ def manage_student_records():
         {f"AND approval_status = '{status_filter.lower()}'" if status_filter != 'All' else ''}
         ORDER BY {sort_field} {order}
     """
-
+    
     df = pd.read_sql_query(query, conn)
-
+    
     if not df.empty:
-        # Display students in a scrollable container
-        st.write("### Student List")
-        student_container = st.container()
-        
-        with student_container:
-            for _, student in df.iterrows():
-                with st.expander(f"{student['surname']}, {student['other_names']} ({student['student_id']})"):
-                    tab1, tab2, tab3 = st.tabs(["Details", "Edit Information", "Documents"])
+        for _, student in df.iterrows():
+            with st.expander(f"{student['surname']}, {student['other_names']} ({student['student_id']})"):
+                tab1, tab2, tab3, tab4 = st.tabs(["Details", "Edit Form", "Documents", "Actions"])
+                
+                with tab1:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write("**Personal Information**")
+                        st.write(f"Student ID: {student['student_id']}")
+                        st.write(f"Name: {student['surname']} {student['other_names']}")
+                        st.write(f"Date of Birth: {student['date_of_birth']}")
+                        st.write(f"Gender: {student['gender']}")
+                        st.write(f"Nationality: {student['nationality']}")
+                        st.write(f"Religion: {student['religion']}")
+                        st.write(f"Denomination: {student['denomination']}")
+                        
+                    with col2:
+                        st.write("**Contact Information**")
+                        st.write(f"Email: {student['email']}")
+                        st.write(f"Phone: {student['telephone']}")
+                        st.write(f"Ghana Card: {student['ghana_card_id']}")
+                        st.write(f"Address: {student['residential_address']}")
+                        
+                        st.write("**Payment Information**")
+                        if pd.notna(student['receipt_path']) and student['receipt_path']:
+                            st.write("✅ Receipt Uploaded")
+                            st.write(f"Receipt Amount: GHS {float(student['receipt_amount']):.2f}")
+                        else:
+                            st.write("⚪ No Receipt (Optional)")
+                
+                with tab2:
+                    edited_data = {}
                     
-                    with tab1:
-                        col1, col2 = st.columns(2)
+                    st.subheader("Personal Information")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        edited_data['student_id'] = st.text_input("Student ID", student['student_id'], key=f"edit_id_{student['student_id']}")
+                        edited_data['surname'] = st.text_input("Surname", student['surname'], key=f"edit_surname_{student['student_id']}")
+                        edited_data['other_names'] = st.text_input("Other Names", student['other_names'], key=f"edit_other_{student['student_id']}")
+                        edited_data['date_of_birth'] = st.date_input("Date of Birth", datetime.strptime(student['date_of_birth'], '%Y-%m-%d').date(), key=f"edit_dob_{student['student_id']}")
+                        edited_data['place_of_birth'] = st.text_input("Place of Birth", student['place_of_birth'], key=f"edit_pob_{student['student_id']}")
+                        edited_data['home_town'] = st.text_input("Home Town", student['home_town'], key=f"edit_hometown_{student['student_id']}")
+                        edited_data['nationality'] = st.text_input("Nationality", student['nationality'], key=f"edit_nationality_{student['student_id']}")
+                    
+                    with col2:
+                        edited_data['gender'] = st.selectbox("Gender", ["Male", "Female", "Other"], index=["Male", "Female", "Other"].index(student['gender']), key=f"edit_gender_{student['student_id']}")
+                        edited_data['marital_status'] = st.selectbox("Marital Status", ["Single", "Married", "Divorced", "Widowed"], index=["Single", "Married", "Divorced", "Widowed"].index(student['marital_status']), key=f"edit_marital_{student['student_id']}")
+                        edited_data['religion'] = st.text_input("Religion", student['religion'], key=f"edit_religion_{student['student_id']}")
+                        edited_data['denomination'] = st.text_input("Denomination", student['denomination'], key=f"edit_denom_{student['student_id']}")
+                        edited_data['disability_status'] = st.selectbox("Disability Status", ["None", "Yes"], index=["None", "Yes"].index(student['disability_status']), key=f"edit_disability_{student['student_id']}")
+                        if edited_data['disability_status'] == "Yes":
+                            edited_data['disability_description'] = st.text_area("Disability Description", student['disability_description'], key=f"edit_disability_desc_{student['student_id']}")
+                    
+                    st.subheader("Contact Information")
+                    col3, col4 = st.columns(2)
+                    
+                    with col3:
+                        edited_data['residential_address'] = st.text_area("Residential Address", student['residential_address'], key=f"edit_res_{student['student_id']}")
+                        edited_data['postal_address'] = st.text_area("Postal Address", student['postal_address'], key=f"edit_postal_{student['student_id']}")
+                        edited_data['email'] = st.text_input("Email", student['email'], key=f"edit_email_{student['student_id']}")
+                    
+                    with col4:
+                        edited_data['telephone'] = st.text_input("Telephone", student['telephone'], key=f"edit_tel_{student['student_id']}")
+                        edited_data['ghana_card_id'] = st.text_input("Ghana Card ID", student['ghana_card_id'], key=f"edit_ghana_{student['student_id']}")
+                    
+                    st.subheader("Guardian Information")
+                    col5, col6 = st.columns(2)
+                    
+                    with col5:
+                        edited_data['guardian_name'] = st.text_input("Guardian's Name", student['guardian_name'], key=f"edit_guard_name_{student['student_id']}")
+                        edited_data['guardian_relationship'] = st.text_input("Relationship", student['guardian_relationship'], key=f"edit_guard_rel_{student['student_id']}")
+                        edited_data['guardian_occupation'] = st.text_input("Occupation", student['guardian_occupation'], key=f"edit_guard_occ_{student['student_id']}")
+                    
+                    with col6:
+                        edited_data['guardian_address'] = st.text_area("Address", student['guardian_address'], key=f"edit_guard_addr_{student['student_id']}")
+                        edited_data['guardian_telephone'] = st.text_input("Telephone", student['guardian_telephone'], key=f"edit_guard_tel_{student['student_id']}")
+                    
+                    st.subheader("Educational Background")
+                    col7, col8 = st.columns(2)
+                    
+                    with col7:
+                        edited_data['previous_school'] = st.text_input("Previous School", student['previous_school'], key=f"edit_prev_sch_{student['student_id']}")
+                        edited_data['qualification_type'] = st.text_input("Qualification", student['qualification_type'], key=f"edit_qual_{student['student_id']}")
+                    
+                    with col8:
+                        edited_data['completion_year'] = st.text_input("Completion Year", student['completion_year'], key=f"edit_comp_year_{student['student_id']}")
+                        edited_data['aggregate_score'] = st.text_input("Aggregate Score", student['aggregate_score'], key=f"edit_agg_{student['student_id']}")
+                    
+                    edited_data['approval_status'] = st.selectbox(
+                        "Approval Status",
+                        ["pending", "approved", "rejected"],
+                        index=["pending", "approved", "rejected"].index(student['approval_status']),
+                        key=f"edit_status_{student['student_id']}"
+                    )
+                    
+                    if st.button("Save Changes", key=f"save_changes_{student['student_id']}"):
+                        try:
+                            c = conn.cursor()
+                            update_query = """
+                                UPDATE student_info 
+                                SET student_id=?, surname=?, other_names=?, date_of_birth=?, 
+                                    place_of_birth=?, home_town=?, nationality=?, gender=?,
+                                    marital_status=?, religion=?, denomination=?, 
+                                    disability_status=?, disability_description=?,
+                                    residential_address=?, postal_address=?, email=?,
+                                    telephone=?, ghana_card_id=?, guardian_name=?,
+                                    guardian_relationship=?, guardian_occupation=?,
+                                    guardian_address=?, guardian_telephone=?,
+                                    previous_school=?, qualification_type=?,
+                                    completion_year=?, aggregate_score=?,
+                                    approval_status=?
+                                WHERE student_id=?
+                            """
+                            
+                            c.execute(update_query, (
+                                edited_data['student_id'], edited_data['surname'],
+                                edited_data['other_names'], edited_data['date_of_birth'],
+                                edited_data['place_of_birth'], edited_data['home_town'],
+                                edited_data['nationality'], edited_data['gender'],
+                                edited_data['marital_status'], edited_data['religion'],
+                                edited_data['denomination'], edited_data['disability_status'],
+                                edited_data.get('disability_description', 'None'),
+                                edited_data['residential_address'], edited_data['postal_address'],
+                                edited_data['email'], edited_data['telephone'],
+                                edited_data['ghana_card_id'], edited_data['guardian_name'],
+                                edited_data['guardian_relationship'],
+                                edited_data['guardian_occupation'],
+                                edited_data['guardian_address'],
+                                edited_data['guardian_telephone'],
+                                edited_data['previous_school'],
+                                edited_data['qualification_type'],
+                                edited_data['completion_year'],
+                                edited_data['aggregate_score'],
+                                edited_data['approval_status'],
+                                student['student_id']
+                            ))
+                            conn.commit()
+                            st.success("Changes saved successfully!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error saving changes: {str(e)}")
+                
+                with tab3:
+                    st.write("**Document Management**")
+                    documents = {
+                        'Ghana Card': student['ghana_card_path'],
+                        'Passport Photo': student['passport_photo_path'],
+                        'Transcript': student['transcript_path'],
+                        'Certificate': student['certificate_path'],
+                        'Receipt': student['receipt_path']
+                    }
+                    
+                    for doc_name, doc_path in documents.items():
+                        col1, col2 = st.columns([3, 1])
                         with col1:
-                            st.write("**Personal Information**")
-                            st.write(f"Student ID: {student['student_id']}")
-                            st.write(f"Name: {student['surname']} {student['other_names']}")
-                            st.write(f"Date of Birth: {student['date_of_birth']}")
-                            st.write(f"Gender: {student['gender']}")
-                            
-                        with col2:
-                            st.write("**Contact Information**")
-                            st.write(f"Email: {student['email']}")
-                            st.write(f"Phone: {student['telephone']}")
-                            st.write(f"Ghana Card: {student['ghana_card_id']}")
-                            st.write(f"Address: {student['residential_address']}")
-                            
-                            # Payment Information with proper handling
-                            st.write("**Payment Information**")
-                            if pd.notna(student['receipt_path']) and student['receipt_path']:
-                                st.write("✅ Receipt Uploaded")
-                                st.write(f"Receipt Amount: GHS {float(student['receipt_amount']):.2f}")
+                            if doc_path:
+                                st.write(f"✅ {doc_name} uploaded")
+                                if doc_name == "Passport Photo":
+                                    try:
+                                        image = PILImage.open(doc_path)
+                                        st.image(image, width=150)
+                                    except Exception as e:
+                                        st.error(f"Error loading image: {str(e)}")
+                                elif doc_path.lower().endswith(('.pdf')):
+                                    st.write(f"[View {doc_name}]({doc_path})")
                             else:
-                                st.write("⚪ No Receipt (Optional)")
-                    
-                    with tab2:
-                        # Edit form
-                        edited_data = {}
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            edited_data['surname'] = st.text_input("Surname", student['surname'], key=f"surname_{student['student_id']}")
-                            edited_data['other_names'] = st.text_input("Other Names", student['other_names'], key=f"other_names_{student['student_id']}")
-                            edited_data['email'] = st.text_input("Email", student['email'], key=f"email_{student['student_id']}")
-                            edited_data['telephone'] = st.text_input("Telephone", student['telephone'], key=f"tel_{student['student_id']}")
-                            edited_data['ghana_card_id'] = st.text_input("Ghana Card", student['ghana_card_id'], key=f"ghana_{student['student_id']}")
+                                st.write(f"❌ {doc_name} not uploaded")
                         
                         with col2:
-                            edited_data['residential_address'] = st.text_area("Residential Address", student['residential_address'], key=f"address_{student['student_id']}")
-                            edited_data['approval_status'] = st.selectbox(
-                                "Status",
-                                ["pending", "approved", "rejected"],
-                                index=["pending", "approved", "rejected"].index(student['approval_status']),
-                                key=f"status_{student['student_id']}"
-                            )
-                            
-                            # Receipt amount editing with proper handling
-                            if pd.notna(student['receipt_path']) and student['receipt_path']:
-                                edited_data['receipt_amount'] = st.number_input(
-                                    "Receipt Amount (GHS)",
-                                    value=float(student['receipt_amount']),
-                                    min_value=0.0,
-                                    format="%.2f",
-                                    key=f"receipt_amount_{student['student_id']}"
-                                )
-                        
-                        if st.button("Save Changes", key=f"save_{student['student_id']}"):
-                            try:
-                                c = conn.cursor()
-                                update_query = """
-                                    UPDATE student_info 
-                                    SET surname=?, other_names=?, email=?, telephone=?, ghana_card_id=?,
-                                        residential_address=?, approval_status=?
-                                        {', receipt_amount=?' if 'receipt_amount' in edited_data else ''}
-                                    WHERE student_id=?
-                                """
-                                
-                                params = [
-                                    edited_data['surname'],
-                                    edited_data['other_names'],
-                                    edited_data['email'],
-                                    edited_data['telephone'],
-                                    edited_data['ghana_card_id'],
-                                    edited_data['residential_address'],
-                                    edited_data['approval_status']
-                                ]
-                                
-                                if 'receipt_amount' in edited_data:
-                                    params.append(edited_data['receipt_amount'])
-                                
-                                params.append(student['student_id'])
-                                
-                                c.execute(update_query, tuple(params))
-                                conn.commit()
-                                st.success("Changes saved successfully!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Error saving changes: {str(e)}")
+                            if doc_path:
+                                if st.button(f"Delete {doc_name}", key=f"del_{doc_name}_{student['student_id']}"):
+                                    try:
+                                        # Delete file from filesystem
+                                        if os.path.exists(doc_path):
+                                            os.remove(doc_path)
+                                        
+                                        # Update database
+                                        c = conn.cursor()
+                                        c.execute(f"""
+                                            UPDATE student_info 
+                                            SET {doc_name.lower().replace(' ', '_')}_path = NULL 
+                                            WHERE student_id = ?
+                                        """, (student['student_id'],))
+                                        conn.commit()
+                                        st.success(f"{doc_name} deleted successfully!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error deleting {doc_name}: {str(e)}")
+                
+                with tab4:
+                    st.write("**Student Actions**")
+                    col1, col2 = st.columns(2)
                     
-                    with tab3:
-                        st.write("**Uploaded Documents**")
-                        if student['ghana_card_path']:
-                            st.write("✅ Ghana Card")
-                        if student['passport_photo_path']:
-                            st.write("✅ Passport Photo")
-                        if student['transcript_path']:
-                            st.write("✅ Transcript")
-                        if student['certificate_path']:
-                            st.write("✅ Certificate")
-                        if student['receipt_path']:
-                            st.write("✅ Receipt")
-                        
-                        # Generate PDF button
+                    with col1:
+                        # Generate PDF
                         if st.button("Generate PDF", key=f"pdf_{student['student_id']}"):
                             pdf_file = generate_student_info_pdf(student)
                             with open(pdf_file, "rb") as file:
@@ -1541,11 +1722,30 @@ def manage_student_records():
                                     file_name=pdf_file,
                                     mime="application/pdf"
                                 )
+                    
+                    with col2:
+                        # Delete student record
+                        if st.button("Delete Student Record", key=f"del_student_{student['student_id']}", type="primary"):
+                            try:
+                                # Delete all associated documents
+                                for doc_path in documents.values():
+                                    if doc_path and os.path.exists(doc_path):
+                                        os.remove(doc_path)
+                                
+                                # Delete database record
+                                c = conn.cursor()
+                                c.execute("DELETE FROM student_info WHERE student_id = ?", 
+                                        (student['student_id'],))
+                                conn.commit()
+                                st.success("Student record deleted successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error deleting student record: {str(e)}")
     else:
         st.info("No records found")
-
+    
     conn.close()
-
+        
 def manage_course_registrations():
     st.subheader("Course Registration Management")
     
@@ -1598,7 +1798,7 @@ def manage_course_registrations():
     if not df.empty:
         for _, registration in df.iterrows():
             with st.expander(f"Registration ID: {registration['registration_id']} - {registration['surname']} {registration['other_names']}"):
-                tab1, tab2 = st.tabs(["Details", "Edit Registration"])
+                tab1, tab2, tab3, tab4 = st.tabs(["Details", "Edit Registration", "Documents", "Actions"])
                 
                 with tab1:
                     col1, col2 = st.columns(2)
@@ -1615,8 +1815,18 @@ def manage_course_registrations():
                         st.write(f"Semester: {registration['semester']}")
                         st.write(f"Total Credits: {registration['total_credits']}")
                     
-                    st.write("**Courses**")
-                    st.write(registration['courses'])
+                    st.write("**Selected Courses**")
+                    if registration['courses']:
+                        courses_list = registration['courses'].split('\n')
+                        table_data = []
+                        for course in courses_list:
+                            if '|' in course:
+                                code, title, credits = course.split('|')
+                                table_data.append([code, title, f"{credits} credits"])
+                        if table_data:
+                            df = pd.DataFrame(table_data, columns=['Course Code', 'Course Title', 'Credit Hours'])
+                            st.table(df)
+                    
                     st.write("**Payment Information**")
                     if registration['receipt_path']:
                         st.write("✅ Receipt Uploaded")
@@ -1636,7 +1846,13 @@ def manage_course_registrations():
                             index=["CIMG", "CIM-UK", "ICAG", "ACCA"].index(registration['programme']),
                             key=f"prog_{registration['registration_id']}"
                         )
-                        edited_reg['level'] = st.text_input("Level", registration['level'], key=f"level_{registration['registration_id']}")
+                        program_levels = list(get_program_courses(edited_reg['programme']).keys())
+                        edited_reg['level'] = st.selectbox(
+                            "Level",
+                            program_levels,
+                            index=program_levels.index(registration['level']) if registration['level'] in program_levels else 0,
+                            key=f"level_{registration['registration_id']}"
+                        )
                         edited_reg['session'] = st.selectbox(
                             "Session",
                             ["Morning", "Evening", "Weekend"],
@@ -1645,7 +1861,12 @@ def manage_course_registrations():
                         )
                     
                     with col2:
-                        edited_reg['academic_year'] = st.text_input("Academic Year", registration['academic_year'], key=f"year_{registration['registration_id']}")
+                        edited_reg['academic_year'] = st.selectbox(
+                            "Academic Year",
+                            [f"{year}-{year+1}" for year in range(2025, 2035)],
+                            index=[f"{year}-{year+1}" for year in range(2025, 2035)].index(registration['academic_year']),
+                            key=f"year_{registration['registration_id']}"
+                        )
                         edited_reg['semester'] = st.selectbox(
                             "Semester",
                             ["First", "Second", "Third"],
@@ -1656,144 +1877,356 @@ def manage_course_registrations():
                             "Status",
                             ["pending", "approved", "rejected"],
                             index=["pending", "approved", "rejected"].index(registration['approval_status']),
-                            key=f"reg_status_{registration['registration_id']}"
+                            key=f"status_{registration['registration_id']}"
                         )
-                        
+                    
+                    # Course selection
+                    st.write("**Course Selection**")
+                    available_courses = get_program_courses(edited_reg['programme']).get(edited_reg['level'], [])
+                    current_courses = registration['courses'].split('\n') if registration['courses'] else []
+                    selected_courses = st.multiselect(
+                        "Select Courses",
+                        available_courses,
+                        default=current_courses,
+                        format_func=lambda x: f"{x.split('|')[0]} - {x.split('|')[1]} ({x.split('|')[2]} credits)",
+                        key=f"courses_{registration['registration_id']}"
+                    )
+                    
+                    edited_reg['courses'] = "\n".join(selected_courses)
+                    edited_reg['total_credits'] = sum([int(course.split("|")[2]) for course in selected_courses])
+                    
+                    st.write(f"Total Credits: {edited_reg['total_credits']}")
+                    if edited_reg['total_credits'] > 24:
+                        st.error("Total credits cannot exceed 24 hours!")
+                    
+                    # Save changes button
+                    if st.button("Save Changes", key=f"save_{registration['registration_id']}"):
+                        if edited_reg['total_credits'] <= 24:
+                            try:
+                                c = conn.cursor()
+                                update_query = """
+                                    UPDATE course_registration 
+                                    SET programme=?, level=?, session=?, 
+                                        academic_year=?, semester=?, approval_status=?,
+                                        courses=?, total_credits=?
+                                    WHERE registration_id=?
+                                """
+                                c.execute(update_query, (
+                                    edited_reg['programme'],
+                                    edited_reg['level'],
+                                    edited_reg['session'],
+                                    edited_reg['academic_year'],
+                                    edited_reg['semester'],
+                                    edited_reg['approval_status'],
+                                    edited_reg['courses'],
+                                    edited_reg['total_credits'],
+                                    registration['registration_id']
+                                ))
+                                conn.commit()
+                                st.success("Changes saved successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error saving changes: {str(e)}")
+                        else:
+                            st.error("Cannot save changes. Total credits exceed 24 hours limit.")
+                
+                with tab3:
+                    st.write("**Document Management**")
                     if registration['receipt_path']:
-                        edited_reg['receipt_amount'] = st.number_input(
-                            "Receipt Amount (GHS)",
+                        st.write("✅ Receipt uploaded")
+                        if registration['receipt_path'].lower().endswith(('.pdf')):
+                            st.write(f"[View Receipt]({registration['receipt_path']})")
+                        elif registration['receipt_path'].lower().endswith(('.jpg', '.jpeg', '.png')):
+                            try:
+                                image = PILImage.open(registration['receipt_path'])
+                                st.image(image, caption="Receipt", use_container_width=True)
+                            except Exception as e:
+                                st.error(f"Error loading receipt image: {str(e)}")
+                        
+                        # Update receipt amount
+                        new_amount = st.number_input(
+                            "Update Receipt Amount (GHS)",
                             value=float(registration['receipt_amount']),
                             min_value=0.0,
                             format="%.2f",
                             key=f"receipt_amount_{registration['registration_id']}"
                         )
-                    
-                    if st.button("Save Changes", key=f"save_reg_{registration['registration_id']}"):
-                        try:
-                            c = conn.cursor()
-                            update_query = """
-                                UPDATE course_registration 
-                                SET programme=?, level=?, session=?, 
-                                    academic_year=?, semester=?, approval_status=?
-                                WHERE registration_id=?
-                            """
-                            c.execute(update_query, (
-                                edited_reg['programme'],
-                                edited_reg['level'],
-                                edited_reg['session'],
-                                edited_reg['academic_year'],
-                                edited_reg['semester'],
-                                edited_reg['approval_status'],
-                                registration['registration_id']
-                            ))
-                            conn.commit()
-                            st.success("Changes saved successfully!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error saving changes: {str(e)}")
-                
-                # Generate PDF button
-                if st.button("Generate PDF", key=f"pdf_reg_{registration['registration_id']}"):
-                    pdf_file = generate_course_registration_pdf(registration)
-                    with open(pdf_file, "rb") as file:
-                        st.download_button(
-                            label="Download Registration Form",
-                            data=file,
-                            file_name=pdf_file,
-                            mime="application/pdf"
+                        
+                        if new_amount != registration['receipt_amount']:
+                            if st.button("Update Amount", key=f"update_amount_{registration['registration_id']}"):
+                                try:
+                                    c = conn.cursor()
+                                    c.execute("""
+                                        UPDATE course_registration 
+                                        SET receipt_amount = ? 
+                                        WHERE registration_id = ?
+                                    """, (new_amount, registration['registration_id']))
+                                    conn.commit()
+                                    st.success("Receipt amount updated successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error updating receipt amount: {str(e)}")
+                        
+                        # Delete receipt
+                        if st.button("Delete Receipt", key=f"del_receipt_{registration['registration_id']}"):
+                            try:
+                                if os.path.exists(registration['receipt_path']):
+                                    os.remove(registration['receipt_path'])
+                                
+                                c = conn.cursor()
+                                c.execute("""
+                                    UPDATE course_registration 
+                                    SET receipt_path = NULL, receipt_amount = 0 
+                                    WHERE registration_id = ?
+                                """, (registration['registration_id'],))
+                                conn.commit()
+                                st.success("Receipt deleted successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error deleting receipt: {str(e)}")
+                    else:
+                        st.write("❌ No receipt uploaded")
+                        # Allow new receipt upload
+                        new_receipt = st.file_uploader(
+                            "Upload Receipt",
+                            type=['pdf', 'jpg', 'jpeg', 'png'],
+                            key=f"new_receipt_{registration['registration_id']}"
                         )
+                        if new_receipt:
+                            receipt_amount = st.number_input(
+                                "Receipt Amount (GHS)",
+                                min_value=0.0,
+                                format="%.2f",
+                                key=f"new_amount_{registration['registration_id']}"
+                            )
+                            if st.button("Save Receipt", key=f"save_receipt_{registration['registration_id']}"):
+                                try:
+                                    receipt_path = save_uploaded_file(new_receipt, "uploads")
+                                    c = conn.cursor()
+                                    c.execute("""
+                                        UPDATE course_registration 
+                                        SET receipt_path = ?, receipt_amount = ? 
+                                        WHERE registration_id = ?
+                                    """, (receipt_path, receipt_amount, registration['registration_id']))
+                                    conn.commit()
+                                    st.success("Receipt uploaded successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error uploading receipt: {str(e)}")
+                
+                with tab4:
+                    st.write("**Registration Actions**")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        # Generate PDF
+                        if st.button("Generate PDF", key=f"pdf_{registration['registration_id']}"):
+                            pdf_file = generate_course_registration_pdf(registration)
+                            with open(pdf_file, "rb") as file:
+                                st.download_button(
+                                    label="Download Registration Form",
+                                    data=file,
+                                    file_name=pdf_file,
+                                    mime="application/pdf"
+                                )
+                    
+                    with col2:
+                        # Delete registration
+                        if st.button("Delete Registration", key=f"del_reg_{registration['registration_id']}", type="primary"):
+                            try:
+                                # Delete receipt file if exists
+                                if registration['receipt_path'] and os.path.exists(registration['receipt_path']):
+                                    os.remove(registration['receipt_path'])
+                                
+                                # Delete database record
+                                c = conn.cursor()
+                                c.execute("DELETE FROM course_registration WHERE registration_id = ?", 
+                                        (registration['registration_id'],))
+                                conn.commit()
+                                st.success("Registration deleted successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error deleting registration: {str(e)}")
     else:
         st.info("No records found")
     
     conn.close()
 
-import plotly.express as px
+
 
 def generate_reports():
+    """
+    Generate various types of reports including:
+    - Student Statistics
+    - Course Registration Summary
+    - Approval Status Summary
+    - Payment Statistics
+    """
     st.subheader("Generate Reports")
-    
-    report_type = st.selectbox("Select Report Type", [
-        "Student Statistics",
-        "Course Registration Summary",
-        "Approval Status Summary",
-        "Programme Statistics"
-    ])
-    
+
+    # Report type selection
+    report_type = st.selectbox(
+        "Select Report Type",
+        [
+            "Student Statistics",
+            "Course Registration Summary",
+            "Approval Status Summary",
+            "Payment Statistics",
+        ],
+    )
+
+    # Connect to the database
     conn = sqlite3.connect('student_registration.db')
-    
+
     if report_type == "Student Statistics":
         # Gender distribution
         gender_dist = pd.read_sql_query(
             "SELECT gender, COUNT(*) as count FROM student_info GROUP BY gender",
             conn
         )
-        st.write("**Gender Distribution**")
-        fig = px.pie(gender_dist, names='gender', values='count', title='Gender Distribution')
-        st.plotly_chart(fig)
-        
+        if not gender_dist.empty:
+            st.write("**Gender Distribution**")
+            fig = px.pie(
+                gender_dist, 
+                names='gender', 
+                values='count', 
+                title='Gender Distribution'
+            )
+            st.plotly_chart(fig)
+        else:
+            st.info("No gender distribution data available")
+
         # Programme distribution
         prog_dist = pd.read_sql_query(
             "SELECT programme, COUNT(*) as count FROM course_registration GROUP BY programme",
             conn
         )
-        st.write("**Programme Distribution**")
-        fig = px.pie(prog_dist, names='programme', values='count', title='Programme Distribution')
-        st.plotly_chart(fig)
-        
+        if not prog_dist.empty:
+            st.write("**Programme Distribution**")
+            fig = px.pie(
+                prog_dist, 
+                names='programme', 
+                values='count', 
+                title='Programme Distribution'
+            )
+            st.plotly_chart(fig)
+        else:
+            st.info("No programme distribution data available")
+
     elif report_type == "Course Registration Summary":
-        summary = pd.read_sql_query("""
+        summary = pd.read_sql_query(
+            """
             SELECT cr.programme, cr.level, cr.semester, 
                    COUNT(*) as registrations,
                    AVG(cr.total_credits) as avg_credits
             FROM course_registration cr
             GROUP BY cr.programme, cr.level, cr.semester
-        """, conn)
-        st.write(summary)
-        
+            """, 
+            conn
+        )
+        if not summary.empty:
+            st.write("**Course Registration Summary**")
+            st.dataframe(summary)
+        else:
+            st.info("No course registration data available")
+
     elif report_type == "Approval Status Summary":
+        # Student approval status
         student_status = pd.read_sql_query(
             "SELECT approval_status, COUNT(*) as count FROM student_info GROUP BY approval_status",
             conn
         )
+        # Course approval status
         course_status = pd.read_sql_query(
             "SELECT approval_status, COUNT(*) as count FROM course_registration GROUP BY approval_status",
             conn
         )
-        
+
         col1, col2 = st.columns(2)
         with col1:
-            st.write("**Student Info Approval Status**")
-            fig = px.pie(student_status, names='approval_status', values='count', title='Student Info Approval Status')
-            st.plotly_chart(fig)
-        with col2:
-            st.write("**Course Registration Approval Status**")
-            fig = px.pie(course_status, names='approval_status', values='count', title='Course Registration Approval Status')
-            st.plotly_chart(fig)
-            
-    # Receipt statistics
-    receipt_stats = pd.read_sql_query("""
-        SELECT 
-            CASE 
-                WHEN receipt_path IS NOT NULL THEN 'With Receipt'
-                ELSE 'Without Receipt'
-            END as receipt_status,
-            COUNT(*) as count,
-            AVG(CASE WHEN receipt_amount IS NOT NULL THEN receipt_amount ELSE 0 END) as avg_amount
-        FROM student_info
-        GROUP BY CASE WHEN receipt_path IS NOT NULL THEN 'With Receipt' ELSE 'Without Receipt' END
-    """, conn)
+            if not student_status.empty:
+                st.write("**Student Info Approval Status**")
+                fig = px.pie(
+                    student_status, 
+                    names='approval_status', 
+                    values='count', 
+                    title='Student Info Approval Status'
+                )
+                st.plotly_chart(fig)
+            else:
+                st.info("No student approval status data available")
 
-    st.write("**Receipt Statistics**")
-    col1, col2 = st.columns(2)
-    with col1:
-        fig = px.pie(receipt_stats, names='receipt_status', values='count', 
-                    title='Receipt Upload Distribution')
-        st.plotly_chart(fig)
-    with col2:
-        st.write("Average Receipt Amount: GHS {:.2f}".format(
-            receipt_stats[receipt_stats['receipt_status'] == 'With Receipt']['avg_amount'].iloc[0]
-        ))
-    
+        with col2:
+            if not course_status.empty:
+                st.write("**Course Registration Approval Status**")
+                fig = px.pie(
+                    course_status, 
+                    names='approval_status', 
+                    values='count', 
+                    title='Course Registration Approval Status'
+                )
+                st.plotly_chart(fig)
+            else:
+                st.info("No course registration approval status data available")
+
+    elif report_type == "Payment Statistics":
+        # Receipt statistics
+        receipt_stats = pd.read_sql_query(
+            """
+            SELECT 
+                CASE 
+                    WHEN receipt_path IS NOT NULL THEN 'With Receipt'
+                    ELSE 'Without Receipt'
+                END as receipt_status,
+                COUNT(*) as count,
+                COALESCE(AVG(CASE WHEN receipt_amount IS NOT NULL THEN receipt_amount ELSE 0 END), 0) as avg_amount
+            FROM student_info
+            GROUP BY CASE 
+                        WHEN receipt_path IS NOT NULL THEN 'With Receipt'
+                        ELSE 'Without Receipt'
+                    END
+            """,
+            conn
+        )
+
+        st.write("**Receipt Statistics**")
+        if not receipt_stats.empty:
+            col1, col2 = st.columns(2)
+            with col1:
+                fig = px.pie(
+                    receipt_stats, 
+                    names='receipt_status', 
+                    values='count', 
+                    title='Receipt Upload Distribution'
+                )
+                st.plotly_chart(fig)
+
+            with col2:
+                with_receipt_data = receipt_stats[receipt_stats['receipt_status'] == 'With Receipt']
+                if not with_receipt_data.empty:
+                    avg_amount = with_receipt_data['avg_amount'].iloc[0]
+                    st.write(f"Average Receipt Amount: GHS {avg_amount:.2f}")
+                else:
+                    st.write("No receipt data available")
+
+                # Additional payment statistics
+                total_payments = pd.read_sql_query(
+                    """
+                    SELECT 
+                        COUNT(*) as total_receipts,
+                        COALESCE(SUM(receipt_amount), 0) as total_amount
+                    FROM student_info 
+                    WHERE receipt_path IS NOT NULL
+                    """,
+                    conn
+                )
+                st.write("**Payment Summary**")
+                st.write(f"Total Receipts: {total_payments['total_receipts'].iloc[0]}")
+                st.write(f"Total Amount: GHS {total_payments['total_amount'].iloc[0]:.2f}")
+        else:
+            st.info("No payment statistics available")
+
+    # Close the database connection
     conn.close()
 
 
@@ -1815,7 +2248,22 @@ def download_forms():
     
     with col1:
         st.write("**Student Information Database**")
-        student_df = pd.read_sql_query("SELECT * FROM student_info", conn)
+        # Updated query to handle programme column
+        student_df = pd.read_sql_query("""
+            SELECT 
+                student_id, surname, other_names, date_of_birth, 
+                place_of_birth, home_town, residential_address, 
+                postal_address, email, telephone, ghana_card_id, 
+                nationality, marital_status, gender, religion, 
+                denomination, disability_status, disability_description,
+                guardian_name, guardian_relationship, guardian_occupation,
+                guardian_address, guardian_telephone, previous_school,
+                qualification_type, completion_year, aggregate_score,
+                ghana_card_path, passport_photo_path, transcript_path,
+                certificate_path, receipt_path, receipt_amount,
+                approval_status, created_at, programme
+            FROM student_info
+        """, conn)
         
         if not student_df.empty:
             csv = student_df.to_csv(index=False)
@@ -1897,6 +2345,74 @@ def download_forms():
             st.error("Error filtering data. Please try different filter criteria.")
             
     conn.close()
+    
+def insert_student_info(c, form_data, file_paths):
+    """
+    Insert student information into the database with proper parameter binding
+    
+    Args:
+        c: SQLite cursor
+        form_data: Dictionary containing form data
+        file_paths: Dictionary containing uploaded file paths
+    """
+    insert_query = '''
+        INSERT INTO student_info (
+            student_id, surname, other_names, date_of_birth, place_of_birth,
+            home_town, residential_address, postal_address, email, telephone,
+            ghana_card_id, nationality, marital_status, gender, religion,
+            denomination, disability_status, disability_description,
+            guardian_name, guardian_relationship, guardian_occupation,
+            guardian_address, guardian_telephone, previous_school,
+            qualification_type, completion_year, aggregate_score,
+            ghana_card_path, passport_photo_path, transcript_path,
+            certificate_path, receipt_path, receipt_amount,
+            approval_status, created_at, programme
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+        )
+    '''
+    
+    params = (
+        form_data['student_id'],
+        form_data['surname'],
+        form_data['other_names'],
+        form_data['date_of_birth'],
+        form_data['place_of_birth'],
+        form_data['home_town'],
+        form_data['residential_address'],
+        form_data['postal_address'],
+        form_data['email'],
+        form_data['telephone'],
+        form_data['ghana_card_id'],
+        form_data['nationality'],
+        form_data['marital_status'],
+        form_data['gender'],
+        form_data['religion'],
+        form_data['denomination'],
+        form_data['disability_status'],
+        form_data['disability_description'],
+        form_data['guardian_name'],
+        form_data['guardian_relationship'],
+        form_data['guardian_occupation'],
+        form_data['guardian_address'],
+        form_data['guardian_telephone'],
+        form_data['previous_school'],
+        form_data['qualification_type'],
+        form_data['completion_year'],
+        form_data['aggregate_score'],
+        file_paths.get('ghana_card_path'),
+        file_paths.get('passport_photo_path'),
+        file_paths.get('transcript_path'),
+        file_paths.get('certificate_path'),
+        file_paths.get('receipt_path'),
+        form_data.get('receipt_amount', 0.0),
+        'pending',
+        datetime.now(),
+        form_data.get('programme', '')
+    )
+    
+    c.execute(insert_query, params)
 
 def main():
     st.set_page_config(
@@ -1984,6 +2500,7 @@ def main():
             student_info_form()
         else:
             course_registration_form()
+
 
 if __name__ == "__main__":
     init_db()
