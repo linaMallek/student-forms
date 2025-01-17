@@ -125,6 +125,8 @@ def reset_db():
     
     # Drop existing tables
     c.execute("DROP TABLE IF EXISTS admin")
+    c.execute("DROP TABLE IF EXISTS course_registration")
+    c.execute("DROP TABLE IF EXISTS student_info")
     
     conn.commit()
     conn.close()
