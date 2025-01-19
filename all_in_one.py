@@ -872,7 +872,7 @@ def student_info_form():
     with col1:
         form_data['student_id'] = st.text_input("Student ID")
         form_data['surname'] = st.text_input("Surname")
-        form_data['other_names'] = st.text_input("Other Names")
+        form_data['other_names'] = st.text_input("First & Middle Names")
         form_data['date_of_birth'] = st.date_input("Date of Birth")
         form_data['place_of_birth'] = st.text_input("Place of Birth")
         form_data['home_town'] = st.text_input("Home Town")
@@ -952,7 +952,7 @@ def student_info_form():
     uploaded_files = {
         'Ghana Card': ghana_card,
         'Passport Photo': passport_photo,
-        'Transcript': transcript,
+        'Transcript/ Results': transcript,
         'Certificate': certificate,
         'Receipt': receipt
     }
